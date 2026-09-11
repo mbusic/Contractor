@@ -90,14 +90,14 @@ Every endpoint checks the role through `@PreAuthorize` on its controller method 
 
 | Method | Path                                          | Roles         | Request           | Response        | Notes                          |
 |--------|-----------------------------------------------|---------------|-------------------|-----------------|--------------------------------|
-| GET    | `/api/clients`                                | ADMIN, OFFICE | -                 | List<ClientDto> | With locations                 |
+| GET    | `/api/clients`                                | ADMIN, OFFICE | -                 | List<ClientDto> | With locations. Sorted by name |
 | GET    | `/api/clients/{id}`                           | ADMIN, OFFICE | -                 | ClientDto       |                                |
 | POST   | `/api/clients`                                | ADMIN, OFFICE | ClientRequest     | ClientDto (201) |                                |
 | PUT    | `/api/clients/{id}`                           | ADMIN, OFFICE | ClientRequest     | ClientDto       |                                |
-| DELETE | `/api/clients/{id}`                           | ADMIN, OFFICE | -                 | 204             | Deletes its locations. See Q3  |
+| DELETE | `/api/clients/{id}`                           | ADMIN, OFFICE | -                 | 204             | Deletes its locations. 409 once client users or orders point to it (domain-model Q3) |
 | POST   | `/api/clients/{id}/locations`                 | ADMIN, OFFICE | LocationRequest   | LocationDto (201) |                              |
-| PUT    | `/api/clients/{id}/locations/{locationId}`    | ADMIN, OFFICE | LocationRequest   | LocationDto     | [A11]                          |
-| DELETE | `/api/clients/{id}/locations/{locationId}`    | ADMIN, OFFICE | -                 | 204             | 400 if the location belongs to another client |
+| PUT    | `/api/clients/{id}/locations/{locationId}`    | ADMIN, OFFICE | LocationRequest   | LocationDto     | [A11]. 404 if the location belongs to another client |
+| DELETE | `/api/clients/{id}/locations/{locationId}`    | ADMIN, OFFICE | -                 | 204             | 404 if the location belongs to another client. 409 once an order uses it |
 | GET    | `/api/clients/{id}/users`                     | ADMIN, OFFICE | -                 | List<UserDto>   | Client users of this client [A10] |
 | POST   | `/api/clients/{id}/users`                     | ADMIN, OFFICE | ClientUserRequest | UserDto (201)   | Role is always CLIENT          |
 | PUT    | `/api/clients/{id}/users/{userId}`            | ADMIN, OFFICE | ClientUserRequest | UserDto         | Empty password = keep the current one |
@@ -169,7 +169,7 @@ Requests end in `Request`, responses in `Dto`. "?" = optional.
 |-----------------|--------|
 | BranchRequest   | name, city? |
 | BranchDto       | id, name, city |
-| ClientRequest   | type, name, contactPerson?, phone?, email?, address? |
+| ClientRequest   | type, name, contactPerson?, phone?, email? (format checked), address? (billing address) |
 | ClientDto       | id, type, name, contactPerson, phone, email, address, locations: List<LocationDto> |
 | LocationRequest | name?, address, city |
 | LocationDto     | id, name, address, city |

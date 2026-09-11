@@ -100,11 +100,13 @@ Rules:
 | `ClientDto getById(Long id)` | |
 | `ClientDto create(ClientRequest req)` | |
 | `ClientDto update(Long id, ClientRequest req)` | Full replace |
-| `void delete(Long id)` | Locations are deleted with it (cascade). See domain-model Q3 |
-| `List<LocationDto> getLocations(Long clientId)` | Used by the portal |
+| `void delete(Long id)` | Locations are deleted with it (cascade). 409 once client users or orders point to it - those slices add the checks (domain-model Q3) |
+| `List<LocationDto> getLocations(Long clientId)` | Used by the portal (slice 9) |
 | `LocationDto addLocation(Long clientId, LocationRequest req)` | |
-| `LocationDto updateLocation(Long clientId, Long locationId, LocationRequest req)` | [S5] |
-| `void deleteLocation(Long clientId, Long locationId)` | 400 if the location belongs to another client (as in the template) |
+| `LocationDto updateLocation(Long clientId, Long locationId, LocationRequest req)` | [S5]. 404 if the location belongs to another client |
+| `void deleteLocation(Long clientId, Long locationId)` | 404 if the location belongs to another client (the template gives 400). Removed through `client.getLocations()`, so orphan removal deletes it |
+
+- Clients sorted by name, locations by ID (the order they were added).
 
 ## OrderService
 
