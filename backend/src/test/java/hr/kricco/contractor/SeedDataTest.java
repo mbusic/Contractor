@@ -8,8 +8,11 @@ import hr.kricco.contractor.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
@@ -26,6 +29,9 @@ class SeedDataTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     @Test
     void seedCreatesFiveBranches() {
@@ -60,6 +66,17 @@ class SeedDataTest {
         assertThat(admin.getBranch()).isNull();
         assertThat(office.getBranch().getCity()).isEqualTo("Zagreb");
         assertThat(servicer.getBranch().getCity()).isEqualTo("Zagreb");
+    }
+
+    @Test
+    void seedPasswordsMatchUsernames() {
+        for (String username : List.of("admin", "office", "servicer")) {
+            User user = userRepository.findByUsername(username).orElseThrow();
+
+            assertThat(passwordEncoder.matches(username, user.getPassword()))
+                    .as("password of %s", username)
+                    .isTrue();
+        }
     }
 
     // Catches a wrong file encoding when the script is read

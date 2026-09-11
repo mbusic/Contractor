@@ -7,8 +7,24 @@ Service layer of the Contractor backend. Source: the services of the template pr
 - **Controller:** HTTP only - path, role check (`@PreAuthorize`), request validation, calls one service method, returns a DTO. Controllers never use repositories. [S1]
 - **Service:** business rules, row-level access checks, transactions (`@Transactional`), mapping entity <-> DTO.
 - **Repository:** Spring Data JPA interfaces, one per entity that is loaded on its own.
-- Services throw `ResponseStatusException` with a status and a short reason (see the error table in rest-api.md).
 - A service that needs the logged-in user gets it as a `User currentUser` parameter. The controller takes it from `@AuthenticationPrincipal UserPrincipal`.
+
+## Errors
+
+Rule: services don't know about HTTP. They never import `org.springframework.http` or `org.springframework.web`, so no `ResponseStatusException` and no `HttpStatus`. [S10]
+
+- A service reports an error by throwing an exception from the `exception` package, with a short message.
+- `ApiExceptionHandler` (a `@RestControllerAdvice` in `controller`) is the only place that maps these exceptions to HTTP. Each one gets its status and a Problem Details body, and the message goes into `detail`.
+- Bean Validation errors and other Spring MVC errors still go through Spring's built-in handler. A missing or invalid token is answered by the security filter (401, empty body).
+
+| Exception                   | Status | Thrown when                                     |
+|-----------------------------|--------|-------------------------------------------------|
+| NotFoundException           | 404    | The row in the path doesn't exist               |
+| ConflictException           | 409    | The action isn't allowed in the current state   |
+| InvalidCredentialsException | 401    | Login with an unknown username or wrong password |
+
+- A new kind of error gets a new exception class and a handler method, added by the slice that needs it first. Known ones still to come: 400 for an unknown ID in the body or a wrong file type, 403 for a row that isn't yours (e.g. another client's order).
+- No generic exception with a status field. It would bring HTTP back into the services.
 
 ## Overview
 
@@ -64,7 +80,7 @@ Client users (step 6, together with the Client slice):
 | `void deleteClientUser(Long clientId, Long userId)` | Same check |
 
 Rules:
-- Passwords are stored as BCrypt hashes.
+- Passwords are stored as BCrypt hashes. Max 72 bytes (`@Size(max = 72)` on the request): BCrypt ignores the rest, and `BCryptPasswordEncoder.encode` throws above it.
 - Username taken -> 409.
 - Role, branch and client must match: OFFICE and SERVICER have a branch, ADMIN has none, CLIENT has a client and no branch. Otherwise 400.
 
@@ -186,9 +202,9 @@ Not services, but the auth steps (roadmap steps 3-5) need them. The same classes
 
 | Class | Does |
 |-------|------|
-| SecurityConfig | Stateless (no session), CSRF off, CORS for `app.cors.origin`. Public: `/api/auth/login`, `/api/health`, `/api/files/**`. Everything else needs a token. Adds `@EnableMethodSecurity` for `@PreAuthorize` [S8] |
-| JwtUtil | Creates and checks HS256 tokens (subject = username, claim `role`). Secret from `APP_JWT_SECRET`, lifetime 24h |
-| JwtAuthFilter | Reads `Authorization: Bearer ...`, loads the user, puts it into the security context |
+| SecurityConfig | Stateless (no session), CSRF off. Public: `/api/auth/login`, `/api/health`, `/error` (Spring's error page, so real errors aren't hidden behind a 401), and `/api/files/**` once the Files slice adds it. Everything else needs a token, and a missing or invalid one gets 401 with an empty body. `@EnableMethodSecurity` for `@PreAuthorize` comes in step 5 [S8]. CORS is decided in step 7 (Angular dev proxy or CORS for `app.cors.origin`) |
+| JwtUtil | Creates and checks HS256 tokens (subject = username, claim `role`). Secret from `APP_JWT_SECRET` (no default, at least 32 bytes, else the app doesn't start), lifetime 24h |
+| JwtAuthFilter | Reads `Authorization: Bearer ...`, loads the user, puts it into the security context. If the user was deleted after the token was issued, the request stays unauthenticated (the template throws, which gives a 500). Created in SecurityConfig, not a `@Component` |
 | UserDetailsServiceImpl | Loads a User by username for the filter |
 | UserPrincipal | Wraps User. Authority = `ROLE_` + role name (e.g. `ROLE_OFFICE`) |
 
@@ -205,3 +221,4 @@ Not services, but the auth steps (roadmap steps 3-5) need them. The same classes
 | S7 | OrderNumberGenerator reads the year row without a lock | Row lock, so parallel orders don't get the same number |
 | S8 | No method security | `@EnableMethodSecurity` + `@PreAuthorize` on controllers |
 | S9 | Document HTML puts database values in as they are | Values are HTML-escaped. Otherwise a description like `<script>...</script>` would run in the document tab, which the frontend opens as a blob with the app's origin, so the script could read the app's data |
+| S10 | Services and controllers throw `ResponseStatusException` | Services throw exceptions from the `exception` package, and `ApiExceptionHandler` maps them to HTTP. Services stay free of HTTP types |

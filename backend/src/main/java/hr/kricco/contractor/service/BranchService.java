@@ -3,14 +3,14 @@ package hr.kricco.contractor.service;
 import hr.kricco.contractor.dto.BranchDto;
 import hr.kricco.contractor.dto.BranchRequest;
 import hr.kricco.contractor.entity.Branch;
+import hr.kricco.contractor.exception.ConflictException;
+import hr.kricco.contractor.exception.NotFoundException;
 import hr.kricco.contractor.repository.BranchRepository;
 import hr.kricco.contractor.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -52,14 +52,14 @@ public class BranchService {
         Branch branch = findBranch(id);
         // Blocked instead of failing on the foreign key (domain-model Q3)
         if (userRepository.existsByBranchId(id)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Branch has users");
+            throw new ConflictException("Branch has users");
         }
         branchRepository.delete(branch);
     }
 
     private Branch findBranch(Long id) {
         return branchRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Branch not found"));
+                .orElseThrow(() -> new NotFoundException("Branch not found"));
     }
 
     // Full replace: a missing field in the request clears the value

@@ -12,7 +12,7 @@ REST endpoints of the Contractor backend. Source: the controllers of the templat
 - PUT is a full replace: the request carries all fields of the form, and a missing or null field means "empty". [A3] The one exception is the password on user updates: empty means "keep the current password".
 - No pagination - lists return all rows. The POC has little data.
 - Validation: request DTOs use Bean Validation (`@Valid`, `@NotBlank`, ...).
-- Errors use the RFC 9457 Problem Details format, through Spring's built-in support (`spring.mvc.problemdetails.enabled=true`). Services throw `ResponseStatusException` with a short reason, which ends up in the `detail` field. [A12]
+- Errors use the RFC 9457 Problem Details format, through Spring's built-in support (`spring.mvc.problemdetails.enabled=true`). Services throw exceptions from the `exception` package, and `ApiExceptionHandler` turns them into Problem Details with the message in the `detail` field (see services.md "Errors"). [A12] The one exception: a 401 for a missing or invalid token comes from the security filter and has an empty body.
 
   ```json
   { "type": "about:blank", "title": "Conflict", "status": 409, "detail": "Order is already assigned", "instance": "/api/orders/7/accept" }

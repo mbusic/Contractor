@@ -6,7 +6,7 @@
 - Spring Boot 3.5.x
 - REST API
 - Gradle
-- Base package `hr.kricco.contractor`, split by layer (as in the template project): `controller`, `service`, `repository`, `entity`, `dto`, `config`, `security`
+- Base package `hr.kricco.contractor`, split by layer (as in the template project): `controller`, `service`, `repository`, `entity`, `dto`, `exception`, `config`, `security`
 - Lombok
 
 ## Persistence
@@ -15,7 +15,7 @@
 - PostgreSQL, running on a separate database server
 - During development, `backend/src/main/resources/schema.sql` is the source of truth for the database schema. Whenever the schema changes, update schema.sql in the same change and apply it to the database by hand (psql or the IDE). Spring does not run it on startup and Hibernate `ddl-auto` stays `none`.
 - No Flyway during development. Before go-live we introduce Flyway, generate the initial migration from schema.sql, and from then on all schema changes go through versioned migrations.
-- The backend reads the database connection settings from application.properties: `jdbc:postgresql://localhost:5432/contractor`, with the username and password taken from the environment variables `DB_USER` and `DB_PASSWORD` (not stored in git)
+- The backend reads the database connection settings from application.properties: `jdbc:postgresql://localhost:5432/contractor`, with the username and password taken from the environment variables `DB_USER` and `DB_PASSWORD` (not stored in git). The JWT signing key comes from `APP_JWT_SECRET` (at least 32 bytes, no default). Tests use a fixed test-only key from the test application.properties
 - Databases: `contractor` for development, `contractor_test` for automatic tests. Tests connect to `contractor_test` on the same server, with the same `DB_USER` / `DB_PASSWORD`. No Docker / Testcontainers for tests
 - The test schema is rebuilt on every test run: the test config (`src/test/resources/application.properties`) sets `spring.sql.init.mode=always` and runs a reset script (`DROP SCHEMA public CASCADE; CREATE SCHEMA public;`) followed by schema.sql. So `contractor_test` always matches schema.sql, and nobody applies it by hand. `DB_USER` must own the `public` schema in `contractor_test`. This happens only in tests - the dev database is still updated by hand
 - Demo data lives in `backend/src/main/resources/seed.sql`, separate from schema.sql. It's applied to the dev database by hand (`psql ... --single-transaction -v ON_ERROR_STOP=1 -f src/main/resources/seed.sql`, full command in the file). It empties all tables first (`TRUNCATE ... RESTART IDENTITY CASCADE`), so every run gives the same data and the same IDs, and it deletes anything entered by hand. Tests don't load it - `SeedDataTest` only checks that it still runs against the current schema

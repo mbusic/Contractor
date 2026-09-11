@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,13 +21,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 // Runs against contractor_test. Each test is rolled back, so tests don't see each other's rows.
+// @WithMockUser logs in a fake user, so the tests skip the JWT (covered by JwtAuthFilterTest).
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
+@WithMockUser
 class BranchControllerTest {
 
     @Autowired
@@ -82,11 +86,17 @@ class BranchControllerTest {
                 .andExpect(jsonPath("$.name").value("Kricco Osijek"));
     }
 
+    // Also pins the Problem Details format that every error uses
     @Test
     void getByUnknownIdReturnsNotFound() throws Exception {
         mockMvc.perform(get("/api/branches/{id}", 999999))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.detail").value("Branch not found"));
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.type").value("about:blank"))
+                .andExpect(jsonPath("$.title").value("Not Found"))
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.detail").value("Branch not found"))
+                .andExpect(jsonPath("$.instance").value("/api/branches/999999"));
     }
 
     @Test
