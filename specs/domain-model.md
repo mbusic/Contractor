@@ -84,7 +84,7 @@ Both types live in one `users` table, and the role tells which type a user is. T
 | username    | String | required, unique                            |
 | password    | String | required, BCrypt hash                       |
 | role        | Role   | required                                    |
-| displayName | String | Shown on notes and documents                |
+| displayName | String | required. Shown on notes and documents      |
 | client      | Client | Set only for CLIENT                         |
 | branch      | Branch | Required for OFFICE and SERVICER, empty for ADMIN and CLIENT |
 
@@ -270,7 +270,7 @@ Printable HTML documents made from an order (roadmap step 9), as in the template
 
 - **Q1 - Branch on order.** The template allows an order without a branch (a client doesn't pick one). Who sets the branch, and when?
 - **Q2 - Client.address.** With [C1], an individual's address also lives in a Location. Keep Client.address (e.g. as a billing address, for both client types), or drop it?
-- **Q3 - Deleting referenced rows.** The template hard-deletes clients, users and branches. That fails on the foreign key when orders or notes point to them. Block the delete (simplest), or add an "active" flag?
+- **Q3 - Deleting referenced rows.** The template hard-deletes clients, users and branches. That fails on the foreign key when orders or notes point to them. Block the delete (simplest), or add an "active" flag? Decided for branches only (step 3): deleting a branch that still has users is blocked with 409. Clients and users are still open.
 - **Q4 - When a draft gets its order number.** For now the number is taken when the order is created, so drafts use up numbers too, and a cancelled draft leaves a gap. The other option is to take the number on submit, so a draft has no number until then. Gaps can matter because invoices use the order number.
 - **Q5 - Documents a client user can see.** All 4 types, or not the work order (it's an internal document for the servicer)?
 

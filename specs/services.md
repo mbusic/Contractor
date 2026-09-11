@@ -39,7 +39,7 @@ Service layer of the Contractor backend. Source: the services of the template pr
 | `BranchDto getById(Long id)` | 404 if missing |
 | `BranchDto create(BranchRequest req)` | |
 | `BranchDto update(Long id, BranchRequest req)` | Full replace |
-| `void delete(Long id)` | See domain-model Q3 |
+| `void delete(Long id)` | 409 "Branch has users" if users belong to it (domain-model Q3) |
 
 This is the roadmap step 1 reference slice, so it's the pattern for the other services.
 

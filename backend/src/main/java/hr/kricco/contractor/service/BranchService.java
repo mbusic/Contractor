@@ -4,6 +4,7 @@ import hr.kricco.contractor.dto.BranchDto;
 import hr.kricco.contractor.dto.BranchRequest;
 import hr.kricco.contractor.entity.Branch;
 import hr.kricco.contractor.repository.BranchRepository;
+import hr.kricco.contractor.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -18,6 +19,7 @@ import java.util.List;
 public class BranchService {
 
     private final BranchRepository branchRepository;
+    private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
     public List<BranchDto> getAll() {
@@ -48,6 +50,10 @@ public class BranchService {
     @Transactional
     public void delete(Long id) {
         Branch branch = findBranch(id);
+        // Blocked instead of failing on the foreign key (domain-model Q3)
+        if (userRepository.existsByBranchId(id)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Branch has users");
+        }
         branchRepository.delete(branch);
     }
 

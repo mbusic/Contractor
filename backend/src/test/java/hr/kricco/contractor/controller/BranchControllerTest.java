@@ -1,7 +1,10 @@
 package hr.kricco.contractor.controller;
 
 import hr.kricco.contractor.entity.Branch;
+import hr.kricco.contractor.entity.Role;
+import hr.kricco.contractor.entity.User;
 import hr.kricco.contractor.repository.BranchRepository;
+import hr.kricco.contractor.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -31,6 +34,9 @@ class BranchControllerTest {
 
     @Autowired
     private BranchRepository branchRepository;
+
+    @Autowired
+    private UserRepository userRepository;
 
     @Test
     void createReturnsNewBranch() throws Exception {
@@ -107,10 +113,32 @@ class BranchControllerTest {
         assertThat(branchRepository.findById(branch.getId())).isEmpty();
     }
 
+    @Test
+    void deleteBranchWithUsersReturnsConflict() throws Exception {
+        Branch branch = saveBranch("Kricco Split", "Split");
+        saveServicer(branch);
+
+        mockMvc.perform(delete("/api/branches/{id}", branch.getId()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Branch has users"));
+
+        assertThat(branchRepository.findById(branch.getId())).isPresent();
+    }
+
     private Branch saveBranch(String name, String city) {
         Branch branch = new Branch();
         branch.setName(name);
         branch.setCity(city);
         return branchRepository.save(branch);
+    }
+
+    private void saveServicer(Branch branch) {
+        User servicer = new User();
+        servicer.setUsername("servicer");
+        servicer.setPassword("not-a-real-hash");
+        servicer.setRole(Role.SERVICER);
+        servicer.setDisplayName("Ivan Horvat");
+        servicer.setBranch(branch);
+        userRepository.save(servicer);
     }
 }

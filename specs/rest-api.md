@@ -27,7 +27,7 @@ REST endpoints of the Contractor backend. Source: the controllers of the templat
 | 401    | No token, invalid or expired token, wrong username/password                  |
 | 403    | Wrong role for the endpoint, or the row isn't yours (e.g. another client's order) |
 | 404    | The row in the path doesn't exist                                            |
-| 409    | State conflict: status change not allowed, order already taken, order not in the right status, username taken |
+| 409    | State conflict: status change not allowed, order already taken, order not in the right status, username taken, branch still has users |
 
 ## Roles
 
@@ -67,7 +67,7 @@ Every endpoint checks the role through `@PreAuthorize` (e.g. `hasAnyRole('ADMIN'
 | GET    | `/api/branches/{id}`  | employees | -             | BranchDto       | [A11]                    |
 | POST   | `/api/branches`       | ADMIN     | BranchRequest | BranchDto (201) |                          |
 | PUT    | `/api/branches/{id}`  | ADMIN     | BranchRequest | BranchDto       |                          |
-| DELETE | `/api/branches/{id}`  | ADMIN     | -             | 204             | See domain-model Q3      |
+| DELETE | `/api/branches/{id}`  | ADMIN     | -             | 204             | 409 if users belong to it (domain-model Q3) |
 
 ### Employees
 
