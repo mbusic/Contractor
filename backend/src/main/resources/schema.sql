@@ -16,5 +16,7 @@ CREATE TABLE users (
     password     VARCHAR(255) NOT NULL,
     role         VARCHAR(20)  NOT NULL CHECK (role IN ('ADMIN', 'OFFICE', 'SERVICER', 'CLIENT')),
     display_name VARCHAR(255) NOT NULL,
-    branch_id    BIGINT REFERENCES branches (id)
+    branch_id    BIGINT REFERENCES branches (id),
+    -- false = deactivated: can't log in, rows that point to the user stay as they are
+    active       BOOLEAN      NOT NULL DEFAULT TRUE
 );

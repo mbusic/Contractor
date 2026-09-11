@@ -20,7 +20,7 @@ public class AuthService {
 
     @Transactional(readOnly = true)
     public LoginResponse login(String username, String password) {
-        User user = userRepository.findByUsername(username)
+        User user = userRepository.findByUsernameAndActiveTrue(username)
                 .orElseThrow(InvalidCredentialsException::new);
         if (!passwordEncoder.matches(password, user.getPassword())) {
             throw new InvalidCredentialsException();

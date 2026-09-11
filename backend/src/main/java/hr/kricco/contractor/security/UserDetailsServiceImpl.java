@@ -17,7 +17,8 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     @Override
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String username) {
-        return userRepository.findByUsername(username)
+        // A deactivated user counts as not found, so their tokens stop working at once
+        return userRepository.findByUsernameAndActiveTrue(username)
                 .map(UserPrincipal::new)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
     }

@@ -128,6 +128,16 @@ class JwtAuthFilterTest {
         callWithToken(token).andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void requestFromDeactivatedUserReturnsUnauthorized() throws Exception {
+        User admin = saveAdmin("admin", "secret");
+        String token = jwtUtil.generate(admin);
+        admin.setActive(false);
+        userRepository.flush();
+
+        callWithToken(token).andExpect(status().isUnauthorized());
+    }
+
     private ResultActions callWithToken(String token) throws Exception {
         return mockMvc.perform(get(PROTECTED_URL)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token));

@@ -19,6 +19,7 @@ Rule: services don't know about HTTP. They never import `org.springframework.htt
 
 | Exception                   | Status | Thrown when                                     | detail |
 |-----------------------------|--------|-------------------------------------------------|--------|
+| BadRequestException         | 400    | A business rule on the request fails, e.g. a servicer without a branch or an unknown ID in the body | The message |
 | NotFoundException           | 404    | The row in the path doesn't exist               | The message |
 | ConflictException           | 409    | The action isn't allowed in the current state   | The message |
 | InvalidCredentialsException | 401    | Login with an unknown username or wrong password | "Invalid credentials" |
@@ -27,7 +28,7 @@ Rule: services don't know about HTTP. They never import `org.springframework.htt
 
 - The 500 catch-all only sees exceptions from controllers and services. Errors before Spring MVC (in a filter, or a URL the firewall rejects) go through Tomcat's forward to `/error` and get Spring Boot's default error body.
 
-- A new kind of error gets a new exception class and a handler method, added by the slice that needs it first. Known ones still to come: 400 for an unknown ID in the body or a wrong file type, 403 for a row that isn't yours (e.g. another client's order).
+- A new kind of error gets a new exception class and a handler method, added by the slice that needs it first. Known one still to come: 403 for a row that isn't yours (e.g. another client's order).
 - No generic exception with a status field. It would bring HTTP back into the services.
 
 ## Overview
@@ -49,7 +50,7 @@ Rule: services don't know about HTTP. They never import `org.springframework.htt
 
 | Method | Does |
 |--------|------|
-| `LoginResponse login(String username, String password)` | Finds the user, checks the password with `PasswordEncoder`, issues a JWT through `JwtUtil`. 401 "Invalid credentials" if the user is missing or the password is wrong (the same message for both) |
+| `LoginResponse login(String username, String password)` | Finds the active user, checks the password with `PasswordEncoder`, issues a JWT through `JwtUtil`. 401 "Invalid credentials" if the user is missing, deactivated, or the password is wrong (the same message for all) |
 
 ## BranchService
 
@@ -69,10 +70,13 @@ Employee accounts:
 
 | Method | Does |
 |--------|------|
-| `List<UserDto> getEmployees(Role role)` | All employees, or only one role if `role` isn't null |
-| `UserDto createEmployee(EmployeeRequest req)` | Role must be ADMIN, OFFICE or SERVICER (400 otherwise) |
-| `UserDto updateEmployee(Long id, EmployeeRequest req)` | Full replace, except an empty password keeps the current one |
-| `void deleteEmployee(Long id)` | See domain-model Q3 |
+| `List<UserDto> getEmployees(Role role)` | All employees, active and deactivated, sorted by displayName. Only one role if `role` isn't null (400 for CLIENT) |
+| `UserDto createEmployee(EmployeeRequest req)` | Role must be ADMIN, OFFICE or SERVICER (400 otherwise). Password required (400) |
+| `UserDto updateEmployee(Long id, EmployeeRequest req, User currentUser)` | Full replace, except an empty password keeps the current one. `active` can reactivate |
+| `void deleteEmployee(Long id, User currentUser)` | Sets `active = false`, nothing is deleted (domain-model Q3) |
+
+- An unknown ID or a client user's ID -> 404 "Employee not found".
+- Self-guard, so the last admin can't lock everyone out: an admin can't deactivate their own account (delete or `active: false`) or change their own role away from ADMIN -> 409.
 
 Client users (step 6, together with the Client slice):
 
@@ -84,9 +88,9 @@ Client users (step 6, together with the Client slice):
 | `void deleteClientUser(Long clientId, Long userId)` | Same check |
 
 Rules:
-- Passwords are stored as BCrypt hashes. Max 72 bytes (`@Size(max = 72)` on the request): BCrypt ignores the rest, and `BCryptPasswordEncoder.encode` throws above it.
-- Username taken -> 409.
-- Role, branch and client must match: OFFICE and SERVICER have a branch, ADMIN has none, CLIENT has a client and no branch. Otherwise 400.
+- Passwords are stored as BCrypt hashes. Max 72 bytes, checked in the service (400): BCrypt ignores the rest, and `BCryptPasswordEncoder.encode` throws above it. Not `@Size(max = 72)`, because it counts characters, and a Croatian letter like `č` takes 2 bytes.
+- Username taken -> 409. Deactivated users keep their username.
+- Role, branch and client must match: OFFICE and SERVICER have a branch, ADMIN has none, CLIENT has a client and no branch. Otherwise 400. An unknown `branchId` -> 400.
 
 ## ClientService
 
@@ -208,8 +212,8 @@ Not services, but the auth steps (roadmap steps 3-5) need them. The same classes
 |-------|------|
 | SecurityConfig | Stateless (no session), CSRF off. Public: `/api/auth/login`, `/api/health`, and `/api/files/**` once the Files slice adds it. Error forwards (`DispatcherType.ERROR`) are allowed too: Tomcat's forward to `/error` carries no authentication, so without this a real error would turn into a 401. Everything else needs a token, and a missing or invalid one gets 401 with an empty body. `@EnableMethodSecurity` turns on `@PreAuthorize`, which checks the role per endpoint [S8]. CORS is decided in step 7 (Angular dev proxy or CORS for `app.cors.origin`) |
 | JwtUtil | Creates and checks HS256 tokens (subject = username, claim `role`). Secret from `APP_JWT_SECRET` (no default, at least 32 bytes, else the app doesn't start), lifetime 24h |
-| JwtAuthFilter | Reads `Authorization: Bearer ...`, loads the user, puts it into the security context. If the user was deleted after the token was issued, the request stays unauthenticated (the template throws, which gives a 500). Created in SecurityConfig, not a `@Component` |
-| UserDetailsServiceImpl | Loads a User by username for the filter |
+| JwtAuthFilter | Reads `Authorization: Bearer ...`, loads the user, puts it into the security context. If the user was deleted or deactivated after the token was issued, the request stays unauthenticated (the template throws, which gives a 500). Created in SecurityConfig, not a `@Component` |
+| UserDetailsServiceImpl | Loads an active User by username for the filter. A deactivated user counts as not found |
 | UserPrincipal | Wraps User. Authority = `ROLE_` + role name (e.g. `ROLE_OFFICE`) |
 
 ## Changes from the template

@@ -1,5 +1,6 @@
 package hr.kricco.contractor.controller;
 
+import hr.kricco.contractor.exception.BadRequestException;
 import hr.kricco.contractor.exception.ConflictException;
 import hr.kricco.contractor.exception.InvalidCredentialsException;
 import hr.kricco.contractor.exception.NotFoundException;
@@ -17,6 +18,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @Slf4j
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    @ExceptionHandler(BadRequestException.class)
+    public ProblemDetail handleBadRequest(BadRequestException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+    }
 
     @ExceptionHandler(NotFoundException.class)
     public ProblemDetail handleNotFound(NotFoundException e) {

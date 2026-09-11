@@ -44,4 +44,8 @@ public class User {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "branch_id")
     private Branch branch;
+
+    // false = deactivated instead of deleted, so orders and notes keep pointing to the user
+    @Column(nullable = false)
+    private boolean active = true;
 }

@@ -46,7 +46,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             context.setAuthentication(authentication);
             SecurityContextHolder.setContext(context);
         } catch (UsernameNotFoundException e) {
-            // The user was deleted after the token was issued - the request stays unauthenticated
+            // The user was deleted or deactivated after the token was issued - the request stays unauthenticated
         }
     }
 }

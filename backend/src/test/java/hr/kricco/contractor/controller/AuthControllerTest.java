@@ -62,6 +62,16 @@ class AuthControllerTest {
     }
 
     @Test
+    void loginWithDeactivatedUserReturnsUnauthorized() throws Exception {
+        User user = saveOfficeUser("office", "secret");
+        user.setActive(false);
+
+        login("office", "secret")
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.detail").value("Invalid credentials"));
+    }
+
+    @Test
     void loginWithUnknownUsernameReturnsUnauthorized() throws Exception {
         login("nobody", "secret")
                 .andExpect(status().isUnauthorized())

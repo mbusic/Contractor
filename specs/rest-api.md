@@ -78,10 +78,13 @@ Every endpoint checks the role through `@PreAuthorize` on its controller method 
 
 | Method | Path               | Roles         | Request         | Response      | Notes                                           |
 |--------|--------------------|---------------|-----------------|---------------|-------------------------------------------------|
-| GET    | `/api/users`       | ADMIN, OFFICE | -               | List<UserDto> | Optional `?role=SERVICER` - the office uses it to pick a servicer |
+| GET    | `/api/users`       | ADMIN, OFFICE | -               | List<UserDto> | Active and deactivated employees, sorted by displayName. Optional `?role=SERVICER` - the office uses it to pick a servicer (the UI shows only active ones). 400 for `role=CLIENT` |
 | POST   | `/api/users`       | ADMIN         | EmployeeRequest | UserDto (201) | 409 if the username is taken                    |
-| PUT    | `/api/users/{id}`  | ADMIN         | EmployeeRequest | UserDto       | Empty password = keep the current one           |
-| DELETE | `/api/users/{id}`  | ADMIN         | -               | 204           | See domain-model Q3                             |
+| PUT    | `/api/users/{id}`  | ADMIN         | EmployeeRequest | UserDto       | Empty password = keep the current one. `active: true` reactivates. 409 if you remove your own ADMIN role or deactivate yourself |
+| DELETE | `/api/users/{id}`  | ADMIN         | -               | 204           | Deactivates the account, nothing is deleted (domain-model Q3). 409 for your own account |
+
+- 404 "Employee not found" for an unknown ID or the ID of a client user.
+- 400 for a role/branch mismatch, an unknown `branchId`, a missing password on create, or a password over 72 bytes.
 
 ### Clients, locations, client users
 
@@ -156,8 +159,8 @@ Requests end in `Request`, responses in `Dto`. "?" = optional.
 |-------------------|--------|
 | LoginRequest      | username, password |
 | LoginResponse     | token, userId, username, role, displayName, branchId?, clientId? |
-| UserDto           | id, username, role, displayName, branchId?, branchName?, clientId?, clientName? |
-| EmployeeRequest   | username, password (required on create), role (ADMIN, OFFICE or SERVICER), displayName, branchId (required for OFFICE and SERVICER, empty for ADMIN) |
+| UserDto           | id, username, role, displayName, branchId?, branchName?, clientId?, clientName?, active |
+| EmployeeRequest   | username, password (required on create, max 72 bytes), role (ADMIN, OFFICE or SERVICER), displayName, branchId (required for OFFICE and SERVICER, empty for ADMIN), active (required, so a PUT that forgets it can't deactivate the account) |
 | ClientUserRequest | username, password (required on create), displayName |
 
 ### Branches and clients
@@ -221,6 +224,5 @@ My choices in this document that nobody has confirmed yet:
 - The portal order view has no costs, notes, servicer or branch. Clients see the costs in the quote and invoice documents.
 - A client user can change an order (fields, photos) only while it's a DRAFT, and can't cancel or delete it.
 - Documents for employees: ADMIN and OFFICE only, as in the template (it shows the document buttons only to the office). Servicers can't open them.
-- OFFICE can read the employee list (to pick a servicer), but only ADMIN can change employee accounts.
 - "Submit" for employees is a status change to PENDING. The required-field check runs whenever an order leaves DRAFT, except when it's cancelled.
 - 403 (not 404) for another user's rows, as in the template.
