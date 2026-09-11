@@ -19,10 +19,10 @@
 0. **Project scaffold.** Build tool, dependencies, package structure, DB connection, empty schema.sql in place, one health-check endpoint. Must compile and run.
 1. **First vertical slice (reference pattern).** Branch - a simple domain entity that User needs in step 3. Take it fully end-to-end: schema.sql tables, entity, repository, service, REST endpoint, one test. This becomes the pattern agents copy for everything else.
 2. **Seed data.** A separate seed script with realistic data, so every later step can be tested against real rows. Keep it out of schema.sql.
-3. **Auth entities + schema.** `users` table added to schema.sql. The role is a string column holding the Role enum (ADMIN, OFFICE, SERVICER, CLIENT) - no role or permission tables (see `specs/domain-model.md`). User entity + repository + tests. This step covers employees only (ADMIN, OFFICE, SERVICER, with a FK to Branch). Client users need the Client entity, so they are added in step 6, together with the Client slice.
+3. **Auth entities + schema.** `users` table added to schema.sql, and seed users (one per employee role) added to seed.sql. The role is a string column holding the Role enum (ADMIN, OFFICE, SERVICER, CLIENT) - no role or permission tables (see `specs/domain-model.md`). User entity + repository + tests. This step covers employees only (ADMIN, OFFICE, SERVICER, with a FK to Branch). Client users need the Client entity, so they are added in step 6, together with the Client slice.
 4. **Auth mechanism.** Filter chain, login endpoint, password handling, token issuing. Test login success/failure.
 5. **Authorisation.** Wire roles to endpoint access (`hasRole` / `@PreAuthorize`). Row-level rules (e.g. a servicer sees only their own and unassigned orders) are checked in the services. Test protected endpoint with/without rights.
-6. **Remaining domain, slice by slice.** For each feature: schema.sql tables, entity, repository, service (implemented), REST endpoint, test. No empty stubs - each slice ships working.
+6. **Remaining domain, slice by slice.** For each feature: schema.sql tables, seed.sql rows (and the table in its TRUNCATE list), entity, repository, service (implemented), REST endpoint, test. No empty stubs - each slice ships working.
 
    Order features by dependency (e.g. order before time sheet). List them out before starting.
 7. **Frontend scaffold.** Angular app, routing, auth interceptor, API client wired to the documented contract. Login screen end-to-end against the real backend.

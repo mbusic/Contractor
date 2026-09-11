@@ -18,6 +18,7 @@
 - The backend reads the database connection settings from application.properties: `jdbc:postgresql://localhost:5432/contractor`, with the username and password taken from the environment variables `DB_USER` and `DB_PASSWORD` (not stored in git)
 - Databases: `contractor` for development, `contractor_test` for automatic tests. Tests connect to `contractor_test` on the same server, with the same `DB_USER` / `DB_PASSWORD`. No Docker / Testcontainers for tests
 - The test schema is rebuilt on every test run: the test config (`src/test/resources/application.properties`) sets `spring.sql.init.mode=always` and runs a reset script (`DROP SCHEMA public CASCADE; CREATE SCHEMA public;`) followed by schema.sql. So `contractor_test` always matches schema.sql, and nobody applies it by hand. `DB_USER` must own the `public` schema in `contractor_test`. This happens only in tests - the dev database is still updated by hand
+- Demo data lives in `backend/src/main/resources/seed.sql`, separate from schema.sql. It's applied to the dev database by hand (`psql ... --single-transaction -v ON_ERROR_STOP=1 -f src/main/resources/seed.sql`, full command in the file). It empties all tables first (`TRUNCATE ... RESTART IDENTITY CASCADE`), so every run gives the same data and the same IDs, and it deletes anything entered by hand. Tests don't load it - `SeedDataTest` only checks that it still runs against the current schema
 
 ## Frontend
 
