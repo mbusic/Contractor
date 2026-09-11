@@ -92,7 +92,8 @@ Both types live in one `users` table, and the role tells which type a user is. T
 | active      | boolean | required, default true. See below          |
 
 - Only a client user has a client. An employee never has one.
-- Users are never deleted, only deactivated (`active = false`), so orders and notes keep their servicer and author (Q3). A deactivated user can't log in, and their tokens stop working at once. ADMIN still sees them in the employee list and can reactivate them. The username stays taken.
+- Employees are never deleted, only deactivated (`active = false`), so orders and notes keep their servicer and author (Q3). A deactivated user can't log in, and their tokens stop working at once. ADMIN still sees them in the employee list and can reactivate them. The username stays taken.
+- Client users are deleted for real: nothing points to them (orders don't record who created them, and client users can't write notes). If orders ever get a "created by" field, this has to change to deactivation too.
 
 ### Order
 
@@ -274,7 +275,7 @@ Printable HTML documents made from an order (roadmap step 9), as in the template
 
 - **Q1 - Branch on order.** The template allows an order without a branch (a client doesn't pick one). Who sets the branch, and when?
 - **Q2 - Client.address.** Decided (slice 2): kept as an optional billing address for both client types, printed on the invoice. Work sites are Locations.
-- **Q3 - Deleting referenced rows.** The template hard-deletes clients, users and branches. That fails on the foreign key when orders or notes point to them. Block the delete (simplest), or add an "active" flag? Decided so far: branches - deleting a branch that still has users is blocked with 409. Users (employees) - deactivated instead of deleted (see User). Clients - deleted together with their locations while nothing points to them, 409 once client users or orders do. A location used by an order can't be deleted either (409). Those checks are added by the slices that add the references.
+- **Q3 - Deleting referenced rows.** The template hard-deletes clients, users and branches. That fails on the foreign key when orders or notes point to them. Block the delete (simplest), or add an "active" flag? Decided so far: branches - deleting a branch that still has users is blocked with 409. Users - employees are deactivated instead of deleted, client users are deleted (see User). Clients - deleted together with their locations while nothing points to them, 409 while client users or orders do. A location used by an order can't be deleted either (409). Those checks are added by the slices that add the references.
 - **Q4 - When a draft gets its order number.** For now the number is taken when the order is created, so drafts use up numbers too, and a cancelled draft leaves a gap. The other option is to take the number on submit, so a draft has no number until then. Gaps can matter because invoices use the order number.
 - **Q5 - Documents a client user can see.** All 4 types, or not the work order (it's an internal document for the servicer)?
 

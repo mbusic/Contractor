@@ -9,6 +9,8 @@ public record UserDto(
         String displayName,
         Long branchId,
         String branchName,
+        Long clientId,
+        String clientName,
         boolean active
 ) {
 }

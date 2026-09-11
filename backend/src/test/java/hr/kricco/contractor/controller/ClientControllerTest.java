@@ -3,8 +3,11 @@ package hr.kricco.contractor.controller;
 import hr.kricco.contractor.entity.Client;
 import hr.kricco.contractor.entity.ClientType;
 import hr.kricco.contractor.entity.Location;
+import hr.kricco.contractor.entity.Role;
+import hr.kricco.contractor.entity.User;
 import hr.kricco.contractor.repository.ClientRepository;
 import hr.kricco.contractor.repository.LocationRepository;
+import hr.kricco.contractor.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -12,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -46,6 +50,10 @@ class ClientControllerTest {
             {"name": "Skladište", "address": "Vukovarska 18", "city": "Split 21000"}
             """;
 
+    private static final String CLIENT_USER_JSON = """
+            {"username": "petar", "password": "tajna", "displayName": "Petar Perić"}
+            """;
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -54,6 +62,12 @@ class ClientControllerTest {
 
     @Autowired
     private LocationRepository locationRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     // Clients
 
@@ -151,6 +165,18 @@ class ClientControllerTest {
         assertThat(locationRepository.findAll()).isEmpty();
     }
 
+    @Test
+    void deleteClientWithUsersReturnsConflict() throws Exception {
+        Client client = saveClient("Petar Perić d.o.o.");
+        saveClientUser(client, "petar");
+
+        mockMvc.perform(delete("/api/clients/{id}", client.getId()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Client has users"));
+
+        assertThat(clientRepository.findById(client.getId())).isPresent();
+    }
+
     // Locations
 
     @Test
@@ -242,6 +268,136 @@ class ClientControllerTest {
         assertThat(locationRepository.findById(location.getId())).isPresent();
     }
 
+    // Client users
+
+    @Test
+    void getUsersReturnsOnlyThisClientsUsersSortedByName() throws Exception {
+        Client client = saveClient("Petar Perić d.o.o.");
+        Client other = saveClient("Ana Anić");
+        saveClientUser(client, "zvonko");
+        saveClientUser(client, "petar");
+        saveClientUser(other, "ana");
+
+        mockMvc.perform(get("/api/clients/{id}/users", client.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].username").value("petar"))
+                .andExpect(jsonPath("$[1].username").value("zvonko"));
+    }
+
+    @Test
+    void getUsersOfUnknownClientReturnsNotFound() throws Exception {
+        mockMvc.perform(get("/api/clients/{id}/users", 999999))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.detail").value("Client not found"));
+    }
+
+    @Test
+    void createUserReturnsClientUserWithHashedPassword() throws Exception {
+        Client client = saveClient("Petar Perić d.o.o.");
+
+        mockMvc.perform(post("/api/clients/{id}/users", client.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(CLIENT_USER_JSON))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(notNullValue()))
+                .andExpect(jsonPath("$.username").value("petar"))
+                .andExpect(jsonPath("$.role").value("CLIENT"))
+                .andExpect(jsonPath("$.displayName").value("Petar Perić"))
+                .andExpect(jsonPath("$.clientId").value(client.getId()))
+                .andExpect(jsonPath("$.clientName").value("Petar Perić d.o.o."))
+                .andExpect(jsonPath("$.branchId").value(nullValue()))
+                .andExpect(jsonPath("$.password").doesNotExist());
+
+        User saved = userRepository.findByUsername("petar").orElseThrow();
+        assertThat(passwordEncoder.matches("tajna", saved.getPassword())).isTrue();
+    }
+
+    @Test
+    void createUserWithUsernameOfAnEmployeeReturnsConflict() throws Exception {
+        Client client = saveClient("Petar Perić d.o.o.");
+        User employee = new User();
+        employee.setUsername("petar");
+        employee.setPassword("not-a-real-hash");
+        employee.setRole(Role.ADMIN);
+        employee.setDisplayName("Petar Admin");
+        userRepository.save(employee);
+
+        mockMvc.perform(post("/api/clients/{id}/users", client.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(CLIENT_USER_JSON))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Username is taken"));
+    }
+
+    @Test
+    void createUserWithoutPasswordReturnsBadRequest() throws Exception {
+        Client client = saveClient("Petar Perić d.o.o.");
+
+        mockMvc.perform(post("/api/clients/{id}/users", client.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username": "petar", "displayName": "Petar Perić"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Password is required"));
+    }
+
+    @Test
+    void updateUserReplacesFieldsAndKeepsPasswordWhenEmpty() throws Exception {
+        Client client = saveClient("Petar Perić d.o.o.");
+        User user = saveClientUser(client, "petar");
+        String oldHash = user.getPassword();
+
+        mockMvc.perform(put("/api/clients/{id}/users/{userId}", client.getId(), user.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username": "petar2", "password": "", "displayName": "Petar P."}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("petar2"))
+                .andExpect(jsonPath("$.displayName").value("Petar P."))
+                .andExpect(jsonPath("$.role").value("CLIENT"));
+
+        assertThat(userRepository.findById(user.getId()).orElseThrow().getPassword()).isEqualTo(oldHash);
+    }
+
+    @Test
+    void updateUserOfAnotherClientReturnsNotFound() throws Exception {
+        Client owner = saveClient("Petar Perić d.o.o.");
+        Client other = saveClient("Ana Anić");
+        User user = saveClientUser(owner, "petar");
+
+        mockMvc.perform(put("/api/clients/{id}/users/{userId}", other.getId(), user.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(CLIENT_USER_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.detail").value("Client user not found"));
+    }
+
+    @Test
+    void deleteUserRemovesIt() throws Exception {
+        Client client = saveClient("Petar Perić d.o.o.");
+        User user = saveClientUser(client, "petar");
+
+        mockMvc.perform(delete("/api/clients/{id}/users/{userId}", client.getId(), user.getId()))
+                .andExpect(status().isNoContent());
+
+        assertThat(userRepository.findById(user.getId())).isEmpty();
+    }
+
+    @Test
+    void deleteUserOfAnotherClientReturnsNotFound() throws Exception {
+        Client owner = saveClient("Petar Perić d.o.o.");
+        Client other = saveClient("Ana Anić");
+        User user = saveClientUser(owner, "petar");
+
+        mockMvc.perform(delete("/api/clients/{id}/users/{userId}", other.getId(), user.getId()))
+                .andExpect(status().isNotFound());
+
+        assertThat(userRepository.findById(user.getId())).isPresent();
+    }
+
     // Access by role: ADMIN and OFFICE only
 
     @Test
@@ -268,7 +424,11 @@ class ClientControllerTest {
                 delete("/api/clients/1"),
                 post("/api/clients/1/locations").contentType(MediaType.APPLICATION_JSON).content(LOCATION_JSON),
                 put("/api/clients/1/locations/1").contentType(MediaType.APPLICATION_JSON).content(LOCATION_JSON),
-                delete("/api/clients/1/locations/1"));
+                delete("/api/clients/1/locations/1"),
+                get("/api/clients/1/users"),
+                post("/api/clients/1/users").contentType(MediaType.APPLICATION_JSON).content(CLIENT_USER_JSON),
+                put("/api/clients/1/users/1").contentType(MediaType.APPLICATION_JSON).content(CLIENT_USER_JSON),
+                delete("/api/clients/1/users/1"));
     }
 
     @ParameterizedTest
@@ -292,5 +452,15 @@ class ClientControllerTest {
             client.getLocations().add(location);
         }
         return clientRepository.save(client);
+    }
+
+    private User saveClientUser(Client client, String username) {
+        User user = new User();
+        user.setUsername(username);
+        user.setPassword(passwordEncoder.encode("secret"));
+        user.setRole(Role.CLIENT);
+        user.setDisplayName("Test " + username);
+        user.setClient(client);
+        return userRepository.save(user);
     }
 }

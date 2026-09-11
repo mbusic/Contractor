@@ -2,9 +2,12 @@ package hr.kricco.contractor.controller;
 
 import hr.kricco.contractor.dto.ClientDto;
 import hr.kricco.contractor.dto.ClientRequest;
+import hr.kricco.contractor.dto.ClientUserRequest;
 import hr.kricco.contractor.dto.LocationDto;
 import hr.kricco.contractor.dto.LocationRequest;
+import hr.kricco.contractor.dto.UserDto;
 import hr.kricco.contractor.service.ClientService;
+import hr.kricco.contractor.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -27,6 +30,7 @@ import java.util.List;
 public class ClientController {
 
     private final ClientService clientService;
+    private final UserService userService;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE')")
@@ -79,5 +83,34 @@ public class ClientController {
     @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE')")
     public void deleteLocation(@PathVariable Long id, @PathVariable Long locationId) {
         clientService.deleteLocation(id, locationId);
+    }
+
+    // Client users: login accounts for the client portal
+
+    @GetMapping("/{id}/users")
+    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE')")
+    public List<UserDto> getUsers(@PathVariable Long id) {
+        return userService.getClientUsers(id);
+    }
+
+    @PostMapping("/{id}/users")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE')")
+    public UserDto createUser(@PathVariable Long id, @Valid @RequestBody ClientUserRequest request) {
+        return userService.createClientUser(id, request);
+    }
+
+    @PutMapping("/{id}/users/{userId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE')")
+    public UserDto updateUser(@PathVariable Long id, @PathVariable Long userId,
+                              @Valid @RequestBody ClientUserRequest request) {
+        return userService.updateClientUser(id, userId, request);
+    }
+
+    @DeleteMapping("/{id}/users/{userId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE')")
+    public void deleteUser(@PathVariable Long id, @PathVariable Long userId) {
+        userService.deleteClientUser(id, userId);
     }
 }

@@ -94,14 +94,16 @@ Every endpoint checks the role through `@PreAuthorize` on its controller method 
 | GET    | `/api/clients/{id}`                           | ADMIN, OFFICE | -                 | ClientDto       |                                |
 | POST   | `/api/clients`                                | ADMIN, OFFICE | ClientRequest     | ClientDto (201) |                                |
 | PUT    | `/api/clients/{id}`                           | ADMIN, OFFICE | ClientRequest     | ClientDto       |                                |
-| DELETE | `/api/clients/{id}`                           | ADMIN, OFFICE | -                 | 204             | Deletes its locations. 409 once client users or orders point to it (domain-model Q3) |
+| DELETE | `/api/clients/{id}`                           | ADMIN, OFFICE | -                 | 204             | Deletes its locations. 409 "Client has users" while it has client users, 409 once orders point to it (domain-model Q3) |
 | POST   | `/api/clients/{id}/locations`                 | ADMIN, OFFICE | LocationRequest   | LocationDto (201) |                              |
 | PUT    | `/api/clients/{id}/locations/{locationId}`    | ADMIN, OFFICE | LocationRequest   | LocationDto     | [A11]. 404 if the location belongs to another client |
 | DELETE | `/api/clients/{id}/locations/{locationId}`    | ADMIN, OFFICE | -                 | 204             | 404 if the location belongs to another client. 409 once an order uses it |
-| GET    | `/api/clients/{id}/users`                     | ADMIN, OFFICE | -                 | List<UserDto>   | Client users of this client [A10] |
-| POST   | `/api/clients/{id}/users`                     | ADMIN, OFFICE | ClientUserRequest | UserDto (201)   | Role is always CLIENT          |
+| GET    | `/api/clients/{id}/users`                     | ADMIN, OFFICE | -                 | List<UserDto>   | Client users of this client, sorted by displayName [A10] |
+| POST   | `/api/clients/{id}/users`                     | ADMIN, OFFICE | ClientUserRequest | UserDto (201)   | Role is always CLIENT. 409 if the username is taken (by anyone) |
 | PUT    | `/api/clients/{id}/users/{userId}`            | ADMIN, OFFICE | ClientUserRequest | UserDto         | Empty password = keep the current one |
-| DELETE | `/api/clients/{id}/users/{userId}`            | ADMIN, OFFICE | -                 | 204             |                                |
+| DELETE | `/api/clients/{id}/users/{userId}`            | ADMIN, OFFICE | -                 | 204             | Deletes the account for real (domain-model User) |
+
+- 404 "Client user not found" for a user of another client or an employee ID, 404 "Client not found" for an unknown client.
 
 ### Orders
 
@@ -161,7 +163,7 @@ Requests end in `Request`, responses in `Dto`. "?" = optional.
 | LoginResponse     | token, userId, username, role, displayName, branchId?, clientId? |
 | UserDto           | id, username, role, displayName, branchId?, branchName?, clientId?, clientName?, active |
 | EmployeeRequest   | username, password (required on create, max 72 bytes), role (ADMIN, OFFICE or SERVICER), displayName, branchId (required for OFFICE and SERVICER, empty for ADMIN), active (required, so a PUT that forgets it can't deactivate the account) |
-| ClientUserRequest | username, password (required on create), displayName |
+| ClientUserRequest | username, password (required on create, max 72 bytes), displayName |
 
 ### Branches and clients
 

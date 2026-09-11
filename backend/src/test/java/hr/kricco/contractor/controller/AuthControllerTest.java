@@ -1,9 +1,12 @@
 package hr.kricco.contractor.controller;
 
 import hr.kricco.contractor.entity.Branch;
+import hr.kricco.contractor.entity.Client;
+import hr.kricco.contractor.entity.ClientType;
 import hr.kricco.contractor.entity.Role;
 import hr.kricco.contractor.entity.User;
 import hr.kricco.contractor.repository.BranchRepository;
+import hr.kricco.contractor.repository.ClientRepository;
 import hr.kricco.contractor.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +19,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -36,6 +40,9 @@ class AuthControllerTest {
     private BranchRepository branchRepository;
 
     @Autowired
+    private ClientRepository clientRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @Test
@@ -49,7 +56,29 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.username").value("office"))
                 .andExpect(jsonPath("$.role").value("OFFICE"))
                 .andExpect(jsonPath("$.displayName").value("Dispečer"))
-                .andExpect(jsonPath("$.branchId").value(user.getBranch().getId()));
+                .andExpect(jsonPath("$.branchId").value(user.getBranch().getId()))
+                .andExpect(jsonPath("$.clientId").value(nullValue()));
+    }
+
+    @Test
+    void loginAsClientUserReturnsClientId() throws Exception {
+        Client client = new Client();
+        client.setType(ClientType.COMPANY);
+        client.setName("Petar Perić d.o.o.");
+        clientRepository.save(client);
+        User user = new User();
+        user.setUsername("petar");
+        user.setPassword(passwordEncoder.encode("secret"));
+        user.setRole(Role.CLIENT);
+        user.setDisplayName("Petar Perić");
+        user.setClient(client);
+        userRepository.save(user);
+
+        login("petar", "secret")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("CLIENT"))
+                .andExpect(jsonPath("$.clientId").value(client.getId()))
+                .andExpect(jsonPath("$.branchId").value(nullValue()));
     }
 
     @Test

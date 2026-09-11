@@ -18,7 +18,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     List<User> findByRoleIn(Collection<Role> roles, Sort sort);
 
+    List<User> findByClientId(Long clientId, Sort sort);
+
+    // Empty if the user doesn't exist or isn't a user of that client
+    Optional<User> findByIdAndClientId(Long id, Long clientId);
+
     boolean existsByUsername(String username);
 
     boolean existsByBranchId(Long branchId);
+
+    boolean existsByClientId(Long clientId);
 }

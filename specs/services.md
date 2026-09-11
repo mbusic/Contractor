@@ -78,14 +78,14 @@ Employee accounts:
 - An unknown ID or a client user's ID -> 404 "Employee not found".
 - Self-guard, so the last admin can't lock everyone out: an admin can't deactivate their own account (delete or `active: false`) or change their own role away from ADMIN -> 409.
 
-Client users (step 6, together with the Client slice):
+Client users:
 
 | Method | Does |
 |--------|------|
-| `List<UserDto> getClientUsers(Long clientId)` | |
-| `UserDto createClientUser(Long clientId, ClientUserRequest req)` | Role is always CLIENT, client is set from the path |
-| `UserDto updateClientUser(Long clientId, Long userId, ClientUserRequest req)` | 404 if the user doesn't belong to that client |
-| `void deleteClientUser(Long clientId, Long userId)` | Same check |
+| `List<UserDto> getClientUsers(Long clientId)` | Sorted by displayName. 404 for an unknown client |
+| `UserDto createClientUser(Long clientId, ClientUserRequest req)` | Role is always CLIENT, client is set from the path, no branch. Password required (400) |
+| `UserDto updateClientUser(Long clientId, Long userId, ClientUserRequest req)` | 404 if the user doesn't belong to that client. Empty password keeps the current one |
+| `void deleteClientUser(Long clientId, Long userId)` | Same check. Deletes the row - nothing points to a client user |
 
 Rules:
 - Passwords are stored as BCrypt hashes. Max 72 bytes, checked in the service (400): BCrypt ignores the rest, and `BCryptPasswordEncoder.encode` throws above it. Not `@Size(max = 72)`, because it counts characters, and a Croatian letter like `č` takes 2 bytes.
@@ -100,7 +100,7 @@ Rules:
 | `ClientDto getById(Long id)` | |
 | `ClientDto create(ClientRequest req)` | |
 | `ClientDto update(Long id, ClientRequest req)` | Full replace |
-| `void delete(Long id)` | Locations are deleted with it (cascade). 409 once client users or orders point to it - those slices add the checks (domain-model Q3) |
+| `void delete(Long id)` | Locations are deleted with it (cascade). 409 "Client has users" while it has client users. The Orders slice adds the same check for orders (domain-model Q3) |
 | `List<LocationDto> getLocations(Long clientId)` | Used by the portal (slice 9) |
 | `LocationDto addLocation(Long clientId, LocationRequest req)` | |
 | `LocationDto updateLocation(Long clientId, Long locationId, LocationRequest req)` | [S5]. 404 if the location belongs to another client |

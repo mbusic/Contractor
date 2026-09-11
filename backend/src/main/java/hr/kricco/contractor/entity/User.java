@@ -40,10 +40,15 @@ public class User {
     @Column(nullable = false)
     private String displayName;
 
-    // Set for OFFICE and SERVICER, empty for ADMIN
+    // Set for OFFICE and SERVICER, empty for ADMIN and CLIENT
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "branch_id")
     private Branch branch;
+
+    // Set only for CLIENT
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "client_id")
+    private Client client;
 
     // false = deactivated instead of deleted, so orders and notes keep pointing to the user
     @Column(nullable = false)

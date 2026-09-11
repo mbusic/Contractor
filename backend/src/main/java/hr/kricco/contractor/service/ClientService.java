@@ -6,9 +6,11 @@ import hr.kricco.contractor.dto.LocationDto;
 import hr.kricco.contractor.dto.LocationRequest;
 import hr.kricco.contractor.entity.Client;
 import hr.kricco.contractor.entity.Location;
+import hr.kricco.contractor.exception.ConflictException;
 import hr.kricco.contractor.exception.NotFoundException;
 import hr.kricco.contractor.repository.ClientRepository;
 import hr.kricco.contractor.repository.LocationRepository;
+import hr.kricco.contractor.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,7 @@ public class ClientService {
 
     private final ClientRepository clientRepository;
     private final LocationRepository locationRepository;
+    private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
     public List<ClientDto> getAll() {
@@ -50,11 +53,14 @@ public class ClientService {
         return toDto(clientRepository.save(client));
     }
 
-    // Its locations are deleted with it (cascade).
-    // The Client users and Orders slices add a 409 while users or orders point to the client (domain-model Q3).
+    // Its locations are deleted with it (cascade). Blocked while users point to the client (domain-model Q3).
+    // The Orders slice adds the same check for orders.
     @Transactional
     public void delete(Long id) {
         Client client = findClient(id);
+        if (userRepository.existsByClientId(id)) {
+            throw new ConflictException("Client has users");
+        }
         clientRepository.delete(client);
     }
 

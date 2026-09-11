@@ -31,7 +31,8 @@ public class AuthService {
 
     private LoginResponse toLoginResponse(User user, String token) {
         Long branchId = user.getBranch() == null ? null : user.getBranch().getId();
+        Long clientId = user.getClient() == null ? null : user.getClient().getId();
         return new LoginResponse(
-                token, user.getId(), user.getUsername(), user.getRole(), user.getDisplayName(), branchId);
+                token, user.getId(), user.getUsername(), user.getRole(), user.getDisplayName(), branchId, clientId);
     }
 }

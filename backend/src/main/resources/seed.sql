@@ -31,3 +31,7 @@ INSERT INTO users (username, password, role, display_name, branch_id) VALUES
     ('admin',    '$2a$10$zKhVW0We3.8GpTfwzgIZ6.dpr7qmjhyKJpDI/SqdIbenIzlK4pDru', 'ADMIN',    'Administrator', NULL),
     ('office',   '$2a$10$fg7k3VG2VtZKeC2AWlkc0.kfjR6Fqvzb1svk8XuNLQlxZwCB5YrRm', 'OFFICE',   'Dispečer',      1),
     ('servicer', '$2a$10$NBlyEpBIiHhszCFvqifLBO41WEXfgXw7kqBl7tuaKNXLWBThv.8za', 'SERVICER', 'Ivan Horvat',   1);
+
+-- A client user of Petar Perić d.o.o. (client 1), password "client"
+INSERT INTO users (username, password, role, display_name, client_id) VALUES
+    ('client', '$2a$10$NU8q/YXIZUtATnpEtwcGNu1v6Rh5.Fq/jJzHZpsgwUcoRBSfMCt0y', 'CLIENT', 'Petar Perić', 1);

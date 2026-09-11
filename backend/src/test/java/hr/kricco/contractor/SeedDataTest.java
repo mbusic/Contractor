@@ -55,13 +55,22 @@ class SeedDataTest {
     }
 
     @Test
-    void seedCreatesOneUserPerEmployeeRole() {
+    void seedCreatesOneUserPerRole() {
         assertThat(userRepository.findAll())
                 .extracting(User::getUsername, User::getRole)
                 .containsExactlyInAnyOrder(
                         tuple("admin", Role.ADMIN),
                         tuple("office", Role.OFFICE),
-                        tuple("servicer", Role.SERVICER));
+                        tuple("servicer", Role.SERVICER),
+                        tuple("client", Role.CLIENT));
+    }
+
+    @Test
+    void seedPutsClientUserInTheCompany() {
+        User clientUser = userRepository.findByUsername("client").orElseThrow();
+
+        assertThat(clientUser.getClient().getName()).isEqualTo("Petar Perić d.o.o.");
+        assertThat(clientUser.getBranch()).isNull();
     }
 
     @Test
@@ -77,7 +86,7 @@ class SeedDataTest {
 
     @Test
     void seedPasswordsMatchUsernames() {
-        for (String username : List.of("admin", "office", "servicer")) {
+        for (String username : List.of("admin", "office", "servicer", "client")) {
             User user = userRepository.findByUsername(username).orElseThrow();
 
             assertThat(passwordEncoder.matches(username, user.getPassword()))

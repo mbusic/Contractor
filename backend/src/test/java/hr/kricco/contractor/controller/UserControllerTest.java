@@ -1,9 +1,12 @@
 package hr.kricco.contractor.controller;
 
 import hr.kricco.contractor.entity.Branch;
+import hr.kricco.contractor.entity.Client;
+import hr.kricco.contractor.entity.ClientType;
 import hr.kricco.contractor.entity.Role;
 import hr.kricco.contractor.entity.User;
 import hr.kricco.contractor.repository.BranchRepository;
+import hr.kricco.contractor.repository.ClientRepository;
 import hr.kricco.contractor.repository.UserRepository;
 import hr.kricco.contractor.security.UserPrincipal;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +46,9 @@ class UserControllerTest {
 
     @Autowired
     private BranchRepository branchRepository;
+
+    @Autowired
+    private ClientRepository clientRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -85,6 +91,27 @@ class UserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].username").value("servicer"));
+    }
+
+    @Test
+    void getEmployeesLeavesOutClientUsers() throws Exception {
+        saveClientUser("petar");
+
+        mockMvc.perform(asAdmin(get("/api/users")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].username").value("admin"));
+    }
+
+    @Test
+    void updateClientUserThroughEmployeeEndpointReturnsNotFound() throws Exception {
+        User clientUser = saveClientUser("petar");
+
+        mockMvc.perform(asAdmin(put("/api/users/{id}", clientUser.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(employeeJson("petar", "", "OFFICE", zagreb.getId(), true)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.detail").value("Employee not found"));
     }
 
     @Test
@@ -350,6 +377,17 @@ class UserControllerTest {
         return """
                 {"username": "%s", "password": %s, "role": "%s", "displayName": "Test %s", "branchId": %s, "active": %s}
                 """.formatted(username, passwordValue, role, username, branchValue, active);
+    }
+
+    private User saveClientUser(String username) {
+        Client client = new Client();
+        client.setType(ClientType.COMPANY);
+        client.setName("Petar Perić d.o.o.");
+        clientRepository.save(client);
+
+        User user = saveUser(username, Role.CLIENT, null);
+        user.setClient(client);
+        return user;
     }
 
     private User saveUser(String username, Role role, Branch branch) {
