@@ -15,13 +15,17 @@ Rule: services don't know about HTTP. They never import `org.springframework.htt
 
 - A service reports an error by throwing an exception from the `exception` package, with a short message.
 - `ApiExceptionHandler` (a `@RestControllerAdvice` in `controller`) is the only place that maps these exceptions to HTTP. Each one gets its status and a Problem Details body, and the message goes into `detail`.
-- Bean Validation errors and other Spring MVC errors still go through Spring's built-in handler. A missing or invalid token is answered by the security filter (401, empty body).
+- Bean Validation errors and other Spring MVC errors go through Spring Boot's built-in handler (`ProblemDetailsExceptionHandler`, `@Order(0)`), which runs before ours. A missing or invalid token is answered by the security filter (401, empty body).
 
-| Exception                   | Status | Thrown when                                     |
-|-----------------------------|--------|-------------------------------------------------|
-| NotFoundException           | 404    | The row in the path doesn't exist               |
-| ConflictException           | 409    | The action isn't allowed in the current state   |
-| InvalidCredentialsException | 401    | Login with an unknown username or wrong password |
+| Exception                   | Status | Thrown when                                     | detail |
+|-----------------------------|--------|-------------------------------------------------|--------|
+| NotFoundException           | 404    | The row in the path doesn't exist               | The message |
+| ConflictException           | 409    | The action isn't allowed in the current state   | The message |
+| InvalidCredentialsException | 401    | Login with an unknown username or wrong password | "Invalid credentials" |
+| AccessDeniedException (Spring Security) | 403 | `@PreAuthorize` refuses the user's role | "Access denied" |
+| Any other exception         | 500    | A bug or an outage. Logged with the stack trace | "Unexpected error" - the real message stays in the log |
+
+- The 500 catch-all only sees exceptions from controllers and services. Errors before Spring MVC (in a filter, or a URL the firewall rejects) go through Tomcat's forward to `/error` and get Spring Boot's default error body.
 
 - A new kind of error gets a new exception class and a handler method, added by the slice that needs it first. Known ones still to come: 400 for an unknown ID in the body or a wrong file type, 403 for a row that isn't yours (e.g. another client's order).
 - No generic exception with a status field. It would bring HTTP back into the services.
@@ -202,7 +206,7 @@ Not services, but the auth steps (roadmap steps 3-5) need them. The same classes
 
 | Class | Does |
 |-------|------|
-| SecurityConfig | Stateless (no session), CSRF off. Public: `/api/auth/login`, `/api/health`, `/error` (Spring's error page, so real errors aren't hidden behind a 401), and `/api/files/**` once the Files slice adds it. Everything else needs a token, and a missing or invalid one gets 401 with an empty body. `@EnableMethodSecurity` for `@PreAuthorize` comes in step 5 [S8]. CORS is decided in step 7 (Angular dev proxy or CORS for `app.cors.origin`) |
+| SecurityConfig | Stateless (no session), CSRF off. Public: `/api/auth/login`, `/api/health`, and `/api/files/**` once the Files slice adds it. Error forwards (`DispatcherType.ERROR`) are allowed too: Tomcat's forward to `/error` carries no authentication, so without this a real error would turn into a 401. Everything else needs a token, and a missing or invalid one gets 401 with an empty body. `@EnableMethodSecurity` turns on `@PreAuthorize`, which checks the role per endpoint [S8]. CORS is decided in step 7 (Angular dev proxy or CORS for `app.cors.origin`) |
 | JwtUtil | Creates and checks HS256 tokens (subject = username, claim `role`). Secret from `APP_JWT_SECRET` (no default, at least 32 bytes, else the app doesn't start), lifetime 24h |
 | JwtAuthFilter | Reads `Authorization: Bearer ...`, loads the user, puts it into the security context. If the user was deleted after the token was issued, the request stays unauthenticated (the template throws, which gives a 500). Created in SecurityConfig, not a `@Component` |
 | UserDetailsServiceImpl | Loads a User by username for the filter |

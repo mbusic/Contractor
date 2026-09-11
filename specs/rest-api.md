@@ -31,7 +31,10 @@ REST endpoints of the Contractor backend. Source: the controllers of the templat
 
 ## Roles
 
-Every endpoint checks the role through `@PreAuthorize` (e.g. `hasAnyRole('ADMIN','OFFICE')`). [A1] On top of that, the services check rows (e.g. a servicer only sees their own and unassigned orders).
+Every endpoint checks the role through `@PreAuthorize` on its controller method (e.g. `hasAnyRole('ADMIN','OFFICE')`). [A1] A wrong role gets 403 with detail "Access denied". On top of that, the services check rows (e.g. a servicer only sees their own and unassigned orders).
+
+- `PreAuthorizeCoverageTest` fails if an endpoint has no `@PreAuthorize`. Only AuthController and HealthController are left out, because they're public. Without the annotation, any logged-in user could call the endpoint, a CLIENT user included.
+- Each new endpoint gets tests for an allowed and a refused role (see BranchControllerTest).
 
 - "Employee" below means ADMIN, OFFICE or SERVICER.
 - ADMIN has full access to every employee endpoint.

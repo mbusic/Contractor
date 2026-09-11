@@ -66,6 +66,23 @@ class JwtAuthFilterTest {
         callWithToken(token).andExpect(status().isOk());
     }
 
+    // Endpoint tests use @WithMockUser, which skips UserPrincipal.
+    // This checks that the user's role from the database reaches @PreAuthorize as ROLE_SERVICER.
+    @Test
+    void servicerTokenCanReadButNotWriteBranches() throws Exception {
+        User servicer = saveUser("servicer", "secret", Role.SERVICER);
+        String token = jwtUtil.generate(servicer);
+
+        callWithToken(token).andExpect(status().isOk());
+        mockMvc.perform(post(PROTECTED_URL)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "Kricco Rijeka"}
+                                """))
+                .andExpect(status().isForbidden());
+    }
+
     @Test
     void requestWithoutTokenReturnsUnauthorized() throws Exception {
         mockMvc.perform(get(PROTECTED_URL))
@@ -117,11 +134,15 @@ class JwtAuthFilterTest {
     }
 
     private User saveAdmin(String username, String password) {
+        return saveUser(username, password, Role.ADMIN);
+    }
+
+    private User saveUser(String username, String password, Role role) {
         User user = new User();
         user.setUsername(username);
         user.setPassword(passwordEncoder.encode(password));
-        user.setRole(Role.ADMIN);
-        user.setDisplayName("Administrator");
+        user.setRole(role);
+        user.setDisplayName("Test " + username);
         return userRepository.save(user);
     }
 }

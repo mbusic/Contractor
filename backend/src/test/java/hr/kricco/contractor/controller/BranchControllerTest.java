@@ -27,10 +27,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 // Runs against contractor_test. Each test is rolled back, so tests don't see each other's rows.
 // @WithMockUser logs in a fake user, so the tests skip the JWT (covered by JwtAuthFilterTest).
+// ADMIN by default. The access tests at the end override the role per test.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-@WithMockUser
+@WithMockUser(roles = "ADMIN")
 class BranchControllerTest {
 
     @Autowired
@@ -131,6 +132,79 @@ class BranchControllerTest {
         mockMvc.perform(delete("/api/branches/{id}", branch.getId()))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").value("Branch has users"));
+
+        assertThat(branchRepository.findById(branch.getId())).isPresent();
+    }
+
+    // Access by role: employees read, only ADMIN writes, CLIENT gets nothing
+
+    @Test
+    @WithMockUser(roles = "OFFICE")
+    void officeCanReadBranches() throws Exception {
+        mockMvc.perform(get("/api/branches"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "SERVICER")
+    void servicerCanReadBranches() throws Exception {
+        mockMvc.perform(get("/api/branches"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "CLIENT")
+    void clientCannotReadBranches() throws Exception {
+        mockMvc.perform(get("/api/branches"))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Access denied"));
+    }
+
+    @Test
+    @WithMockUser(roles = "CLIENT")
+    void clientCannotReadOneBranch() throws Exception {
+        Branch branch = saveBranch("Kricco Zagreb", "Zagreb");
+
+        mockMvc.perform(get("/api/branches/{id}", branch.getId()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "OFFICE")
+    void officeCannotCreateBranch() throws Exception {
+        mockMvc.perform(post("/api/branches")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "Kricco Rijeka", "city": "Rijeka"}
+                                """))
+                .andExpect(status().isForbidden());
+
+        assertThat(branchRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    @WithMockUser(roles = "SERVICER")
+    void servicerCannotUpdateBranch() throws Exception {
+        Branch branch = saveBranch("Kricco Zadar", "Zadar");
+
+        mockMvc.perform(put("/api/branches/{id}", branch.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "Renamed"}
+                                """))
+                .andExpect(status().isForbidden());
+
+        assertThat(branchRepository.findById(branch.getId()).orElseThrow().getName()).isEqualTo("Kricco Zadar");
+    }
+
+    @Test
+    @WithMockUser(roles = "OFFICE")
+    void officeCannotDeleteBranch() throws Exception {
+        Branch branch = saveBranch("Kricco Pula", "Pula");
+
+        mockMvc.perform(delete("/api/branches/{id}", branch.getId()))
+                .andExpect(status().isForbidden());
 
         assertThat(branchRepository.findById(branch.getId())).isPresent();
     }
