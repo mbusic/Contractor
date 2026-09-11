@@ -1,9 +1,12 @@
 package hr.kricco.contractor.controller;
 
 import hr.kricco.contractor.entity.Branch;
+import hr.kricco.contractor.entity.Order;
+import hr.kricco.contractor.entity.OrderStatus;
 import hr.kricco.contractor.entity.Role;
 import hr.kricco.contractor.entity.User;
 import hr.kricco.contractor.repository.BranchRepository;
+import hr.kricco.contractor.repository.OrderRepository;
 import hr.kricco.contractor.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,6 +45,9 @@ class BranchControllerTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private OrderRepository orderRepository;
 
     @Test
     void createReturnsNewBranch() throws Exception {
@@ -134,6 +140,19 @@ class BranchControllerTest {
                 .andExpect(jsonPath("$.detail").value("Branch has users"));
 
         assertThat(branchRepository.findById(branch.getId())).isPresent();
+    }
+
+    @Test
+    void deleteBranchWithOrdersReturnsConflict() throws Exception {
+        Branch branch = saveBranch("Kricco Osijek", "Osijek");
+        Order order = new Order();
+        order.setStatus(OrderStatus.DRAFT);
+        order.setBranch(branch);
+        orderRepository.save(order);
+
+        mockMvc.perform(delete("/api/branches/{id}", branch.getId()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Branch has orders"));
     }
 
     // Access by role: employees read, only ADMIN writes, CLIENT gets nothing

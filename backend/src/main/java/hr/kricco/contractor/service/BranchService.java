@@ -6,6 +6,7 @@ import hr.kricco.contractor.entity.Branch;
 import hr.kricco.contractor.exception.ConflictException;
 import hr.kricco.contractor.exception.NotFoundException;
 import hr.kricco.contractor.repository.BranchRepository;
+import hr.kricco.contractor.repository.OrderRepository;
 import hr.kricco.contractor.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
@@ -20,6 +21,7 @@ public class BranchService {
 
     private final BranchRepository branchRepository;
     private final UserRepository userRepository;
+    private final OrderRepository orderRepository;
 
     @Transactional(readOnly = true)
     public List<BranchDto> getAll() {
@@ -53,6 +55,9 @@ public class BranchService {
         // Blocked instead of failing on the foreign key (domain-model Q3)
         if (userRepository.existsByBranchId(id)) {
             throw new ConflictException("Branch has users");
+        }
+        if (orderRepository.existsByBranchId(id)) {
+            throw new ConflictException("Branch has orders");
         }
         branchRepository.delete(branch);
     }

@@ -18,9 +18,10 @@ All classes go under package `hr.kricco.contractor`. IDs are `Long`, generated b
 | Location         | entity | `locations`          | Work site of a client                         |
 | User             | entity | `users`              | Login account: an employee or a client user   |
 | Order            | entity | `orders`             | One repair/maintenance job                    |
+| Costs            | embeddable | columns of `orders` | Estimated or actual costs of an order     |
 | OrderNote        | entity | `order_notes`        | Comment on an order                           |
 | OrderPhoto       | entity | `order_photos`       | Photo on an order, file stored in `./uploads` |
-| OrderSequence    | entity | `order_sequences`    | Per-year counter for order numbers            |
+| OrderSequence    | table  | `order_sequences`    | Per-year counter for order numbers            |
 | StatusTransition | entity | `status_transitions` | Which order status can follow which           |
 | Role             | enum   | -                    | User role                                     |
 | ClientType       | enum   | -                    | Company or individual                         |
@@ -101,34 +102,27 @@ The table is `orders` because `order` is a reserved word in SQL.
 
 | Field                    | Type             | Notes                                                                   |
 |--------------------------|------------------|-------------------------------------------------------------------------|
-| orderNumber              | String           | required, unique. Format NNN/YY, e.g. 007/26. Taken from OrderSequence when the order is created. See Q4 |
-| branch                   | Branch           | Optional. See Q1                                                        |
-| client                   | Client           | Required on submit [C2]. If a CLIENT user creates the order, it's their client |
-| location                 | Location         | Required on submit, must belong to the order's client [C1]              |
+| orderNumber              | String           | Unique. Format NNN/YY, e.g. 007/26. Empty while DRAFT, taken when the order is submitted (Q4) |
+| branch                   | Branch           | Optional, set by the office (Q1)                                        |
+| client                   | Client           | Required once submitted [C2]. If a CLIENT user creates the order, it's their client |
+| location                 | Location         | Required once submitted, must belong to the order's client [C1]         |
 | contactPerson            | String           | Contact on site for this order. Can differ from the client's contact    |
 | phone                    | String           |                                                                         |
 | email                    | String           |                                                                         |
 | description              | String (TEXT)    | What needs to be fixed                                                  |
 | urgency                  | Urgency          | [C7]                                                                    |
 | status                   | OrderStatus      | required. See "Order lifecycle" [C5]                                    |
-| assignedServicer         | User             | Optional, must have role SERVICER [C8]. Can stand for a whole crew      |
-| estimatedKm              | Integer          |                                                                         |
-| estimatedWorkHours       | Double           | Hours per worker                                                        |
-| estimatedNumberOfWorkers | Integer          |                                                                         |
-| estimatedMaterialCost    | BigDecimal       | EUR                                                                     |
-| actualKm                 | Integer          |                                                                         |
-| actualWorkHours          | Double           | Hours per worker                                                        |
-| actualNumberOfWorkers    | Integer          |                                                                         |
-| actualMaterialCost       | BigDecimal       | EUR                                                                     |
+| assignedServicer         | User             | Optional, must have role SERVICER [C8]. Can stand for a whole crew. Required for IN_PROGRESS |
+| estimatedCosts           | Costs            | Used for the quote. Columns `estimated_km`, `estimated_work_hours`, ... |
+| actualCosts              | Costs            | Used for the report and the invoice. Columns `actual_km`, `actual_work_hours`, ... |
 | createdAt                | Instant          | Set on insert                                                           |
 | updatedAt                | Instant          | Set on every update                                                     |
 | notes                    | List<OrderNote>  | Cascade all, orphan removal                                             |
 | photos                   | List<OrderPhoto> | Cascade all, orphan removal                                             |
-- Total hours = work hours x number of workers. It's calculated, not stored. [C6]
-- The estimated cost fields are used for the quote. The actual cost fields are used for the report and the invoice.
 - Difference between estimated and actual (PR5): the order detail shows actual - estimated for km, work hours, number of workers, total hours and material. It's calculated, not stored. If either value is missing, the difference is shown as "-".
-- The actual cost fields are entered by hand until the time sheet is designed (see Deferred).
-- "Required on submit" fields can be empty while the order is a DRAFT, so their columns are nullable in the database. The service checks them on submit.
+- The actual costs are entered by hand until the time sheet is designed (see Deferred).
+- **Submitted** = PENDING, IN_PROGRESS or RESOLVED. A submitted order always has a client, a location and an order number. The service checks client and location on every change into a submitted status and on every PUT of a submitted order (400), and takes the number the first time the order becomes submitted. DRAFT and CANCELLED orders can be incomplete, so these columns are nullable.
+- This is stricter than "check when leaving DRAFT": a cancelled draft reopened to PENDING is checked too, and a PUT can't clear the client of a PENDING order.
 
 #### Order lifecycle
 
@@ -136,7 +130,7 @@ The table is `orders` because `order` is a reserved word in SQL.
 
 1. **Create.** The order form has two buttons:
    - "Save as draft": the order is saved as DRAFT, and fields can be incomplete.
-   - "Submit": the required fields are checked, and the order is saved as PENDING.
+   - "Submit": the required fields are checked, the order gets its number, and it's saved as PENDING. For employees this is a status change to PENDING (the form saves the draft first).
 
    A DRAFT becomes PENDING the same way, when someone opens it and clicks "Submit". Servicers never see drafts.
 2. **Take.** A PENDING order waits until someone takes it. There are two ways:
@@ -148,7 +142,22 @@ The table is `orders` because `order` is a reserved word in SQL.
 4. **Finish or cancel.** The user changes the status by hand and picks from the allowed next statuses (see StatusTransition).
 
 - Assigning a servicer (by accepting or by the office) is only allowed for PENDING and IN_PROGRESS orders.
+- A status change to IN_PROGRESS needs an assigned servicer (409 "Assign a servicer first"). Otherwise the order would be invisible to every servicer. Accept and assign are the normal ways into IN_PROGRESS.
 - The automatic PENDING -> IN_PROGRESS change is a normal status change, so it must be allowed by StatusTransition. It is, in both the current and the target rules.
+
+### Costs
+
+Embeddable, not an entity: its fields are columns of `orders`. Order uses it twice (estimatedCosts, actualCosts), each with its own column names.
+
+| Field           | Type       | Notes                                                                   |
+|-----------------|------------|-------------------------------------------------------------------------|
+| km              | Integer    |                                                                         |
+| workHours       | BigDecimal | Hours per worker, 2 decimals. Not Double: 2.1 x 3 would give 6.300000000000001 |
+| numberOfWorkers | Integer    |                                                                         |
+| materialCost    | BigDecimal | EUR                                                                     |
+
+- Total hours = work hours x number of workers (`getTotalHours()`). It's calculated, not stored, and empty if either value is missing. [C6]
+- All fields are optional. When all four columns are empty, Hibernate loads the whole `Costs` as null.
 
 ### OrderNote
 
@@ -173,12 +182,14 @@ The table is `orders` because `order` is a reserved word in SQL.
 
 ### OrderSequence
 
-| Field        | Type    | Notes                                  |
-|--------------|---------|----------------------------------------|
-| year         | Integer | Primary key (column `seq_year`), e.g. 2026 |
-| lastSequence | int     | required, default 0                    |
+A table only, no entity: OrderNumberGenerator reads and increases it with one SQL statement.
 
-- For a new order: increase `lastSequence` for the current year (create the row if it's missing), then format it as `%03d/%02d` with the two-digit year. The counter starts again from 1 every year.
+| Column        | Type    | Notes                          |
+|---------------|---------|--------------------------------|
+| seq_year      | Integer | Primary key, e.g. 2026         |
+| last_sequence | Integer | required                       |
+
+- When an order is submitted for the first time: increase `last_sequence` for the current year (Europe/Zagreb), creating the row with 1 if it's missing, then format it as `%03d/%02d` with the two-digit year. The counter starts again from 1 every year.
 
 ### StatusTransition
 
@@ -189,9 +200,9 @@ The table is `orders` because `order` is a reserved word in SQL.
 | fromStatus | OrderStatus | required |
 | toStatus   | OrderStatus | required |
 
-- Unique on (fromStatus, toStatus). fromStatus and toStatus must be different.
+- Has its own `id`, plus a unique constraint on (fromStatus, toStatus). fromStatus and toStatus must be different.
 - An order's status can only change from A to B if there's a row for A -> B. The service checks this and rejects any other change.
-- The user picks the new status from the allowed next statuses. The order detail response includes this list, so the UI shows only valid choices.
+- The user picks the new status from the allowed next statuses. The order detail response includes this list, so the UI shows only valid choices. The list is empty when the user may not change the order, and leaves out IN_PROGRESS when no servicer is assigned.
 - The rows are reference data the app needs to work, so they go into `schema.sql` as INSERTs, right after the CREATE TABLE. They don't go into the seed script.
 - For now, every change between two different statuses is allowed (5 statuses x 4 = 20 rows), so users can pick freely. RESOLVED and CANCELLED are not final yet.
 - Later we switch to these target rules by replacing the rows:
@@ -273,10 +284,10 @@ Printable HTML documents made from an order (roadmap step 9), as in the template
 
 ## Open questions
 
-- **Q1 - Branch on order.** The template allows an order without a branch (a client doesn't pick one). Who sets the branch, and when?
+- **Q1 - Branch on order.** Decided (slice 4): optional, set by ADMIN/OFFICE through the order form. Portal orders start without a branch.
 - **Q2 - Client.address.** Decided (slice 2): kept as an optional billing address for both client types, printed on the invoice. Work sites are Locations.
-- **Q3 - Deleting referenced rows.** The template hard-deletes clients, users and branches. That fails on the foreign key when orders or notes point to them. Block the delete (simplest), or add an "active" flag? Decided so far: branches - deleting a branch that still has users is blocked with 409. Users - employees are deactivated instead of deleted, client users are deleted (see User). Clients - deleted together with their locations while nothing points to them, 409 while client users or orders do. A location used by an order can't be deleted either (409). Those checks are added by the slices that add the references.
-- **Q4 - When a draft gets its order number.** For now the number is taken when the order is created, so drafts use up numbers too, and a cancelled draft leaves a gap. The other option is to take the number on submit, so a draft has no number until then. Gaps can matter because invoices use the order number.
+- **Q3 - Deleting referenced rows.** The template hard-deletes clients, users and branches. That fails on the foreign key when orders or notes point to them. Block the delete (simplest), or add an "active" flag? Decided so far: branches - deleting a branch that still has users or orders is blocked with 409. Users - employees are deactivated instead of deleted, client users are deleted (see User). Clients - deleted together with their locations while nothing points to them, 409 while client users or orders do. A location used by an order can't be deleted either (409). Those checks are added by the slices that add the references.
+- **Q4 - When a draft gets its order number.** Decided (slice 4): when the order is submitted for the first time. Drafts have no number, so abandoned portal drafts don't use up numbers. An order that goes back to DRAFT and is submitted again keeps its number. Cancelled or deleted submitted orders still leave gaps.
 - **Q5 - Documents a client user can see.** All 4 types, or not the work order (it's an internal document for the servicer)?
 
 ## Changes from the template

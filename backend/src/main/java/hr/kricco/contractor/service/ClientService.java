@@ -10,6 +10,7 @@ import hr.kricco.contractor.exception.ConflictException;
 import hr.kricco.contractor.exception.NotFoundException;
 import hr.kricco.contractor.repository.ClientRepository;
 import hr.kricco.contractor.repository.LocationRepository;
+import hr.kricco.contractor.repository.OrderRepository;
 import hr.kricco.contractor.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
@@ -25,6 +26,7 @@ public class ClientService {
     private final ClientRepository clientRepository;
     private final LocationRepository locationRepository;
     private final UserRepository userRepository;
+    private final OrderRepository orderRepository;
 
     @Transactional(readOnly = true)
     public List<ClientDto> getAll() {
@@ -53,13 +55,15 @@ public class ClientService {
         return toDto(clientRepository.save(client));
     }
 
-    // Its locations are deleted with it (cascade). Blocked while users point to the client (domain-model Q3).
-    // The Orders slice adds the same check for orders.
+    // Its locations are deleted with it (cascade). Blocked while users or orders point to the client (domain-model Q3).
     @Transactional
     public void delete(Long id) {
         Client client = findClient(id);
         if (userRepository.existsByClientId(id)) {
             throw new ConflictException("Client has users");
+        }
+        if (orderRepository.existsByClientId(id)) {
+            throw new ConflictException("Client has orders");
         }
         clientRepository.delete(client);
     }
@@ -86,6 +90,9 @@ public class ClientService {
     @Transactional
     public void deleteLocation(Long clientId, Long locationId) {
         Location location = findLocation(clientId, locationId);
+        if (orderRepository.existsByLocationId(locationId)) {
+            throw new ConflictException("Location is used by orders");
+        }
         location.getClient().getLocations().remove(location);
     }
 

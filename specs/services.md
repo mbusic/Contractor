@@ -20,6 +20,7 @@ Rule: services don't know about HTTP. They never import `org.springframework.htt
 | Exception                   | Status | Thrown when                                     | detail |
 |-----------------------------|--------|-------------------------------------------------|--------|
 | BadRequestException         | 400    | A business rule on the request fails, e.g. a servicer without a branch or an unknown ID in the body | The message |
+| ForbiddenException          | 403    | The role may call the endpoint, but the row isn't yours (e.g. a servicer and another servicer's order) | The message |
 | NotFoundException           | 404    | The row in the path doesn't exist               | The message |
 | ConflictException           | 409    | The action isn't allowed in the current state   | The message |
 | InvalidCredentialsException | 401    | Login with an unknown username or wrong password | "Invalid credentials" |
@@ -28,7 +29,7 @@ Rule: services don't know about HTTP. They never import `org.springframework.htt
 
 - The 500 catch-all only sees exceptions from controllers and services. Errors before Spring MVC (in a filter, or a URL the firewall rejects) go through Tomcat's forward to `/error` and get Spring Boot's default error body.
 
-- A new kind of error gets a new exception class and a handler method, added by the slice that needs it first. Known one still to come: 403 for a row that isn't yours (e.g. another client's order).
+- A new kind of error gets a new exception class and a handler method, added by the slice that needs it first.
 - No generic exception with a status field. It would bring HTTP back into the services.
 
 ## Overview
@@ -60,7 +61,7 @@ Rule: services don't know about HTTP. They never import `org.springframework.htt
 | `BranchDto getById(Long id)` | 404 if missing |
 | `BranchDto create(BranchRequest req)` | |
 | `BranchDto update(Long id, BranchRequest req)` | Full replace |
-| `void delete(Long id)` | 409 "Branch has users" if users belong to it (domain-model Q3) |
+| `void delete(Long id)` | 409 "Branch has users" / "Branch has orders" while users or orders point to it (domain-model Q3) |
 
 This is the roadmap step 1 reference slice, so it's the pattern for the other services.
 
@@ -100,11 +101,11 @@ Rules:
 | `ClientDto getById(Long id)` | |
 | `ClientDto create(ClientRequest req)` | |
 | `ClientDto update(Long id, ClientRequest req)` | Full replace |
-| `void delete(Long id)` | Locations are deleted with it (cascade). 409 "Client has users" while it has client users. The Orders slice adds the same check for orders (domain-model Q3) |
+| `void delete(Long id)` | Locations are deleted with it (cascade). 409 "Client has users" / "Client has orders" while client users or orders point to it (domain-model Q3) |
 | `List<LocationDto> getLocations(Long clientId)` | Used by the portal (slice 9) |
 | `LocationDto addLocation(Long clientId, LocationRequest req)` | |
 | `LocationDto updateLocation(Long clientId, Long locationId, LocationRequest req)` | [S5]. 404 if the location belongs to another client |
-| `void deleteLocation(Long clientId, Long locationId)` | 404 if the location belongs to another client (the template gives 400). Removed through `client.getLocations()`, so orphan removal deletes it |
+| `void deleteLocation(Long clientId, Long locationId)` | 404 if the location belongs to another client (the template gives 400). 409 "Location is used by orders". Removed through `client.getLocations()`, so orphan removal deletes it |
 
 - Clients sorted by name, locations by ID (the order they were added).
 
@@ -115,9 +116,9 @@ For employees. Client users go through PortalService.
 | Method | Does |
 |--------|------|
 | `List<OrderSummaryDto> getOrders(User currentUser)` | ADMIN/OFFICE: all. SERVICER: assigned to them + unassigned PENDING. Newest first |
-| `OrderDto getOrder(Long id, User currentUser)` | Row check. Fills `allowedNextStatuses` from StatusTransitionService, and calculates total hours and `costDifference` |
-| `OrderDto createOrder(OrderRequest req, User currentUser)` | New DRAFT with a number from OrderNumberGenerator |
-| `OrderDto updateOrder(Long id, OrderRequest req)` | Full replace of order data and estimated costs |
+| `OrderDto getOrder(Long id, User currentUser)` | Row check. Fills `allowedNextStatuses` from StatusTransitionService (empty if the user may not change the order, without IN_PROGRESS if no servicer is assigned), and calculates total hours and `costDifference` |
+| `OrderDto createOrder(OrderRequest req, User currentUser)` | New DRAFT without a number. `currentUser` is only used for `allowedNextStatuses` in the response |
+| `OrderDto updateOrder(Long id, OrderRequest req, User currentUser)` | Full replace of order data and estimated costs, in any status. For a submitted order, client and location stay required (400) |
 | `void deleteOrder(Long id)` | Deletes the order (with its notes and photos), then the photo files |
 | `OrderDto changeStatus(Long id, OrderStatus newStatus, User currentUser)` | Row check, then `applyStatus` |
 | `OrderDto acceptOrder(Long id, User servicer)` | Servicer takes an unassigned PENDING order |
@@ -132,7 +133,7 @@ Shared with PortalService (not exposed through REST directly):
 
 | Method | Does |
 |--------|------|
-| `void applyStatus(Order order, OrderStatus newStatus)` | 409 if StatusTransitionService doesn't allow it. When the order leaves DRAFT (to anything other than CANCELLED), checks the required fields: client and location set, location belongs to the client. 400 if something is missing |
+| `void applyStatus(Order order, OrderStatus newStatus)` | 409 if StatusTransitionService doesn't allow it. 409 "Assign a servicer first" for IN_PROGRESS without a servicer. For a submitted status (PENDING, IN_PROGRESS, RESOLVED): 400 without client or location, and takes a number from OrderNumberGenerator if the order has none yet |
 | `void storePhoto(Order order, MultipartFile file)` | JPEG, PNG, GIF or WebP only (400 otherwise). Max 6 per order (400). Stores the file through FileStorageService |
 
 Rules:
@@ -141,7 +142,9 @@ Rules:
   `UPDATE orders SET assigned_servicer_id = :me, status = 'IN_PROGRESS' WHERE id = :id AND assigned_servicer_id IS NULL AND status = 'PENDING'`.
   If 0 rows change -> 409 "Order is already taken or not pending". PENDING -> IN_PROGRESS must also be allowed by StatusTransition (it always is).
 - **Assign:** the user must be a SERVICER (400). PENDING: set the servicer, then `applyStatus(IN_PROGRESS)`. IN_PROGRESS: just change the servicer. Any other status: 409.
-- **Location** must belong to the order's client (400), whenever both are set.
+- **Location** must belong to the order's client (400), whenever it's set. A location without a client is refused too.
+- **Unknown IDs in the body** (branch, client, location) -> 400 "Xxx not found", not 404: the path itself exists.
+- **Lists** load branch, client, location and servicer with an `@EntityGraph`, so a row doesn't trigger four extra queries. Newest first, the ID breaks ties.
 
 ## PortalService
 
@@ -175,10 +178,13 @@ The rows come from `schema.sql` (see domain-model StatusTransition).
 
 | Method | Does |
 |--------|------|
-| `String next()` | Increases `lastSequence` for the current year and returns `%03d/%02d` (e.g. `007/26`) |
+| `String next()` | Increases `last_sequence` for the current year (Europe/Zagreb) and returns `%03d/%02d` (e.g. `007/26`) |
 
-- Runs in the same transaction as the order insert.
-- Reads the year row with a row lock (`@Lock(PESSIMISTIC_WRITE)`, i.e. SELECT ... FOR UPDATE), so two orders created at the same moment don't get the same number. [S7] The unique constraint on `orderNumber` is the safety net.
+- Called by `applyStatus` when an order is submitted for the first time (domain-model Q4).
+- One statement through `JdbcClient`, no entity [S7]:
+  `INSERT INTO order_sequences (seq_year, last_sequence) VALUES (:year, 1) ON CONFLICT (seq_year) DO UPDATE SET last_sequence = order_sequences.last_sequence + 1 RETURNING last_sequence`.
+  Postgres locks the row until the transaction ends, so two orders submitted at the same moment don't get the same number - also for the first order of a year, where a read-then-insert would race.
+- `@Transactional(propagation = MANDATORY)`: it must run in the transaction that saves the order, so a rollback gives the number back. The unique constraint on `order_number` is the safety net.
 
 ## DocumentService
 
@@ -228,7 +234,7 @@ Not services, but the auth steps (roadmap steps 3-5) need them. The same classes
 | S4 | DocumentController loads the order and calls DocumentService with no access check | Same HTML approach, but it's called through OrderService / PortalService, which check access first. The layouts follow the new model (Location, Urgency labels, calculated total hours) |
 | S5 | No location update | `updateLocation` |
 | S6 | `deletePhoto` has no access check | Same row check as the other order methods |
-| S7 | OrderNumberGenerator reads the year row without a lock | Row lock, so parallel orders don't get the same number |
+| S7 | OrderNumberGenerator reads the year row without a lock | One upsert statement that locks the row, so parallel orders don't get the same number |
 | S8 | No method security | `@EnableMethodSecurity` + `@PreAuthorize` on controllers |
 | S9 | Document HTML puts database values in as they are | Values are HTML-escaped. Otherwise a description like `<script>...</script>` would run in the document tab, which the frontend opens as a blob with the app's origin, so the script could read the app's data |
 | S10 | Services and controllers throw `ResponseStatusException` | Services throw exceptions from the `exception` package, and `ApiExceptionHandler` maps them to HTTP. Services stay free of HTTP types |

@@ -4,10 +4,13 @@ import hr.kricco.contractor.entity.Branch;
 import hr.kricco.contractor.entity.Client;
 import hr.kricco.contractor.entity.ClientType;
 import hr.kricco.contractor.entity.Location;
+import hr.kricco.contractor.entity.Order;
+import hr.kricco.contractor.entity.OrderStatus;
 import hr.kricco.contractor.entity.Role;
 import hr.kricco.contractor.entity.User;
 import hr.kricco.contractor.repository.BranchRepository;
 import hr.kricco.contractor.repository.ClientRepository;
+import hr.kricco.contractor.repository.OrderRepository;
 import hr.kricco.contractor.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +39,9 @@ class SeedDataTest {
 
     @Autowired
     private ClientRepository clientRepository;
+
+    @Autowired
+    private OrderRepository orderRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -106,6 +112,35 @@ class SeedDataTest {
         assertThat(individual.getType()).isEqualTo(ClientType.INDIVIDUAL);
         assertThat(individual.getLocations()).extracting(Location::getCity)
                 .containsExactly("Zadar 23000", "Pula 52100");
+    }
+
+    @Test
+    void seedCreatesFiveOrdersAtTheirClientsLocations() {
+        List<Order> orders = orderRepository.findAll();
+
+        assertThat(orders).extracting(Order::getOrderNumber, Order::getStatus)
+                .containsExactlyInAnyOrder(
+                        tuple("001/26", OrderStatus.RESOLVED),
+                        tuple("002/26", OrderStatus.IN_PROGRESS),
+                        tuple("003/26", OrderStatus.PENDING),
+                        tuple("004/26", OrderStatus.PENDING),
+                        tuple("005/26", OrderStatus.PENDING));
+        for (Order order : orders) {
+            assertThat(order.getLocation().getClient().getId())
+                    .as("location of %s belongs to its client", order.getOrderNumber())
+                    .isEqualTo(order.getClient().getId());
+        }
+    }
+
+    @Test
+    void seedOrderHasCalculatedTotalHours() {
+        Order resolved = orderRepository.findAll().stream()
+                .filter(order -> order.getOrderNumber().equals("001/26"))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(resolved.getActualCosts().getTotalHours()).isEqualByComparingTo("24");
+        assertThat(resolved.getAssignedServicer().getUsername()).isEqualTo("servicer");
     }
 
     // Catches a wrong file encoding when the script is read

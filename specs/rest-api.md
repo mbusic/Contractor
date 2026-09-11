@@ -27,7 +27,7 @@ REST endpoints of the Contractor backend. Source: the controllers of the templat
 | 401    | No token, invalid or expired token, wrong username/password                  |
 | 403    | Wrong role for the endpoint, or the row isn't yours (e.g. another client's order) |
 | 404    | The row in the path doesn't exist                                            |
-| 409    | State conflict: status change not allowed, order already taken, order not in the right status, username taken, branch still has users |
+| 409    | State conflict: status change not allowed, IN_PROGRESS without a servicer, order already taken, order not in the right status, username taken, a branch/client/location still in use |
 
 ## Roles
 
@@ -70,7 +70,7 @@ Every endpoint checks the role through `@PreAuthorize` on its controller method 
 | GET    | `/api/branches/{id}`  | employees | -             | BranchDto       | [A11]                    |
 | POST   | `/api/branches`       | ADMIN     | BranchRequest | BranchDto (201) |                          |
 | PUT    | `/api/branches/{id}`  | ADMIN     | BranchRequest | BranchDto       |                          |
-| DELETE | `/api/branches/{id}`  | ADMIN     | -             | 204             | 409 if users belong to it (domain-model Q3) |
+| DELETE | `/api/branches/{id}`  | ADMIN     | -             | 204             | 409 while users or orders point to it (domain-model Q3) |
 
 ### Employees
 
@@ -94,10 +94,10 @@ Every endpoint checks the role through `@PreAuthorize` on its controller method 
 | GET    | `/api/clients/{id}`                           | ADMIN, OFFICE | -                 | ClientDto       |                                |
 | POST   | `/api/clients`                                | ADMIN, OFFICE | ClientRequest     | ClientDto (201) |                                |
 | PUT    | `/api/clients/{id}`                           | ADMIN, OFFICE | ClientRequest     | ClientDto       |                                |
-| DELETE | `/api/clients/{id}`                           | ADMIN, OFFICE | -                 | 204             | Deletes its locations. 409 "Client has users" while it has client users, 409 once orders point to it (domain-model Q3) |
+| DELETE | `/api/clients/{id}`                           | ADMIN, OFFICE | -                 | 204             | Deletes its locations. 409 "Client has users" / "Client has orders" while client users or orders point to it (domain-model Q3) |
 | POST   | `/api/clients/{id}/locations`                 | ADMIN, OFFICE | LocationRequest   | LocationDto (201) |                              |
 | PUT    | `/api/clients/{id}/locations/{locationId}`    | ADMIN, OFFICE | LocationRequest   | LocationDto     | [A11]. 404 if the location belongs to another client |
-| DELETE | `/api/clients/{id}/locations/{locationId}`    | ADMIN, OFFICE | -                 | 204             | 404 if the location belongs to another client. 409 once an order uses it |
+| DELETE | `/api/clients/{id}/locations/{locationId}`    | ADMIN, OFFICE | -                 | 204             | 404 if the location belongs to another client. 409 "Location is used by orders" |
 | GET    | `/api/clients/{id}/users`                     | ADMIN, OFFICE | -                 | List<UserDto>   | Client users of this client, sorted by displayName [A10] |
 | POST   | `/api/clients/{id}/users`                     | ADMIN, OFFICE | ClientUserRequest | UserDto (201)   | Role is always CLIENT. 409 if the username is taken (by anyone) |
 | PUT    | `/api/clients/{id}/users/{userId}`            | ADMIN, OFFICE | ClientUserRequest | UserDto         | Empty password = keep the current one |
@@ -110,11 +110,11 @@ Every endpoint checks the role through `@PreAuthorize` on its controller method 
 | Method | Path                                   | Roles                  | Request            | Response               | Notes |
 |--------|----------------------------------------|------------------------|--------------------|------------------------|-------|
 | GET    | `/api/orders`                          | employees              | -                  | List<OrderSummaryDto>  | ADMIN/OFFICE: all orders. SERVICER: orders assigned to them + all unassigned PENDING orders. Newest first |
-| GET    | `/api/orders/{id}`                     | employees              | -                  | OrderDto               | Row check for SERVICER. Includes `allowedNextStatuses` [A5] |
-| POST   | `/api/orders`                          | ADMIN, OFFICE          | OrderRequest       | OrderDto (201)         | Creates a DRAFT. Location by `locationId` [A4] |
-| PUT    | `/api/orders/{id}`                     | ADMIN, OFFICE          | OrderRequest       | OrderDto               | Order data + estimated costs |
-| DELETE | `/api/orders/{id}`                     | ADMIN, OFFICE          | -                  | 204                    | Also deletes the photo files |
-| PATCH  | `/api/orders/{id}/status`              | employees              | StatusChangeRequest | OrderDto              | SERVICER: only on orders assigned to them. 409 if StatusTransition doesn't allow it. "Submit" of a draft = change to PENDING [A5] |
+| GET    | `/api/orders/{id}`                     | employees              | -                  | OrderDto               | Row check for SERVICER (403 "You can't see this order"). Includes `allowedNextStatuses` [A5] |
+| POST   | `/api/orders`                          | ADMIN, OFFICE          | OrderRequest       | OrderDto (201)         | Creates a DRAFT without a number. Location by `locationId` [A4] |
+| PUT    | `/api/orders/{id}`                     | ADMIN, OFFICE          | OrderRequest       | OrderDto               | Order data + estimated costs, in any status. 400 if a submitted order loses its client or location |
+| DELETE | `/api/orders/{id}`                     | ADMIN, OFFICE          | -                  | 204                    | In any status. Also deletes the photo files |
+| PATCH  | `/api/orders/{id}/status`              | employees              | StatusChangeRequest | OrderDto              | SERVICER: only on orders assigned to them (403). 409 if StatusTransition doesn't allow it, or IN_PROGRESS without a servicer. "Submit" of a draft = change to PENDING: 400 without client or location, takes the order number [A5] |
 | POST   | `/api/orders/{id}/accept`              | SERVICER               | -                  | OrderDto               | Order must be PENDING and unassigned, else 409. Assigns it to the caller and moves it to IN_PROGRESS [A6] |
 | PUT    | `/api/orders/{id}/assignment`          | ADMIN, OFFICE          | AssignmentRequest  | OrderDto               | PENDING: assign + move to IN_PROGRESS. IN_PROGRESS: reassign. Other statuses: 409. 400 if the user isn't a SERVICER [A6] |
 | PUT    | `/api/orders/{id}/actual-costs`        | employees              | CostsRequest       | OrderDto               | SERVICER: only on orders assigned to them [A7] |
@@ -183,7 +183,7 @@ Requests end in `Request`, responses in `Dto`. "?" = optional.
 | OrderRequest        | branchId?, clientId?, locationId?, contactPerson?, phone?, email?, description?, urgency?, estimatedCosts: CostsRequest? - all optional while DRAFT, client and location are checked on submit |
 | OrderSummaryDto     | id, orderNumber, status, urgency, branchId, branchName, clientName, locationText, assignedServicerId, assignedServicerName, createdAt |
 | OrderDto            | id, orderNumber, status, allowedNextStatuses: List<OrderStatus>, urgency, branch: BranchDto, client: {id, type, name}, location: LocationDto, contactPerson, phone, email, description, assignedServicer: {id, displayName}, estimatedCosts: CostsDto, actualCosts: CostsDto, costDifference: CostsDto, notes: List<NoteDto>, photos: List<PhotoDto>, createdAt, updatedAt |
-| CostsRequest        | km?, workHours?, numberOfWorkers?, materialCost? |
+| CostsRequest        | km?, workHours?, numberOfWorkers?, materialCost? - none negative. workHours max 9999.99, materialCost max 99999999.99 (the NUMERIC columns) |
 | CostsDto            | km, workHours, numberOfWorkers, totalHours, materialCost - `totalHours` is calculated. In `costDifference` every field is actual - estimated, or null if either value is missing |
 | StatusChangeRequest | status |
 | AssignmentRequest   | servicerId |
@@ -226,5 +226,3 @@ My choices in this document that nobody has confirmed yet:
 - The portal order view has no costs, notes, servicer or branch. Clients see the costs in the quote and invoice documents.
 - A client user can change an order (fields, photos) only while it's a DRAFT, and can't cancel or delete it.
 - Documents for employees: ADMIN and OFFICE only, as in the template (it shows the document buttons only to the office). Servicers can't open them.
-- "Submit" for employees is a status change to PENDING. The required-field check runs whenever an order leaves DRAFT, except when it's cancelled.
-- 403 (not 404) for another user's rows, as in the template.

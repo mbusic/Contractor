@@ -3,10 +3,13 @@ package hr.kricco.contractor.controller;
 import hr.kricco.contractor.entity.Client;
 import hr.kricco.contractor.entity.ClientType;
 import hr.kricco.contractor.entity.Location;
+import hr.kricco.contractor.entity.Order;
+import hr.kricco.contractor.entity.OrderStatus;
 import hr.kricco.contractor.entity.Role;
 import hr.kricco.contractor.entity.User;
 import hr.kricco.contractor.repository.ClientRepository;
 import hr.kricco.contractor.repository.LocationRepository;
+import hr.kricco.contractor.repository.OrderRepository;
 import hr.kricco.contractor.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -65,6 +68,9 @@ class ClientControllerTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private OrderRepository orderRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -177,7 +183,30 @@ class ClientControllerTest {
         assertThat(clientRepository.findById(client.getId())).isPresent();
     }
 
+    @Test
+    void deleteClientWithOrdersReturnsConflict() throws Exception {
+        Client client = saveClient("Petar Perić d.o.o.", "A.G. Matoša 42");
+        saveOrderAt(client, client.getLocations().getFirst());
+
+        mockMvc.perform(delete("/api/clients/{id}", client.getId()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Client has orders"));
+    }
+
     // Locations
+
+    @Test
+    void deleteLocationUsedByOrderReturnsConflict() throws Exception {
+        Client client = saveClient("Petar Perić d.o.o.", "A.G. Matoša 42");
+        Location location = client.getLocations().getFirst();
+        saveOrderAt(client, location);
+
+        mockMvc.perform(delete("/api/clients/{id}/locations/{locationId}", client.getId(), location.getId()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Location is used by orders"));
+
+        assertThat(locationRepository.findById(location.getId())).isPresent();
+    }
 
     @Test
     void addLocationReturnsNewLocation() throws Exception {
@@ -452,6 +481,14 @@ class ClientControllerTest {
             client.getLocations().add(location);
         }
         return clientRepository.save(client);
+    }
+
+    private void saveOrderAt(Client client, Location location) {
+        Order order = new Order();
+        order.setStatus(OrderStatus.DRAFT);
+        order.setClient(client);
+        order.setLocation(location);
+        orderRepository.save(order);
     }
 
     private User saveClientUser(Client client, String username) {
