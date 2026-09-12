@@ -4,7 +4,7 @@
 
 - Work in small, verifiable steps.
 - After each step: project compiles, runs, and existing tests pass.
-- Write at least one test per slice (unit or integration). Tests are the primary verification signal, not just "it compiles".
+- Write at least one test per slice (unit or integration). Tests are the primary verification signal, not just "it compiles". Exception for now: the frontend has no tests, its screens are checked by hand (tech-stack.md "Frontend").
 - After each step, stop and wait for confirmation before starting the next. Summarize what was done and how to verify it.
 - Never leave the project in a non-compiling state between steps.
 
@@ -25,7 +25,7 @@
 6. **Remaining domain, slice by slice.** For each feature: schema.sql tables, seed.sql rows (and the table in its TRUNCATE list), entity, repository, service (implemented), REST endpoint, test. No empty stubs - each slice ships working.
 
    Order features by dependency (e.g. order before time sheet). List them out before starting.
-7. **Frontend scaffold.** Angular app, routing, auth interceptor, API client wired to the documented contract. Login screen end-to-end against the real backend. Decide how the dev server reaches the API: an Angular dev proxy (same origin, no CORS needed) or CORS in SecurityConfig.
+7. **Frontend scaffold.** Angular app, routing, auth interceptor, API client wired to the documented contract. Login screen end-to-end against the real backend. The dev server reaches the API through an Angular dev proxy (same origin, no CORS needed) - decided, see tech-stack.md "Frontend".
 8. **Screens, one at a time.** For each: dashboard, order detail, create order, servicer screens, time sheet, admin CRUD. Each screen wired to its endpoint and manually verifiable before moving on.
 9. **Document views.** DocumentService builds the HTML page for the 4 document types from the current order data (see `specs/services.md`). Document buttons on the order detail (office) and in the client portal open it in a new tab. PDF through the browser's print. Nothing is stored. Test: each type returns HTML with the order number, values are HTML-escaped, and another client's order is refused.
 10. **Final pass.** README (setup, run, seed, test commands). Run the primary end-to-end flow: log in, create an order, view it, confirm the expected result. Define this exact flow so "it works" is unambiguous.

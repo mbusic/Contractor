@@ -25,6 +25,10 @@
 - Angular 19
 - Responsive - must be fully usable on a phone-sized screen as well as desktop
 - Croatian only: UI labels and printable documents are in Croatian (stakeholder document, PR11). Code, API field names and enum values stay in English - the UI shows the Croatian labels listed in `specs/domain-model.md`
+- Code in `/frontend`. Starting point: the Angular app of the template project (`/home/mbusic/code/Obsolete/Contractor/frontend`), copied and amended to this API
+- During development the Angular dev server proxies `/api` to the backend (`localhost:8080`). The frontend calls relative `/api/...` URLs, so it has one origin and the backend needs no CORS configuration. Photo URLs (`/api/files/...`) work as they are
+- The frontend lets each role do exactly what the backend allows (the `@PreAuthorize` rules in rest-api.md). ADMIN: everything, including employees and branches. OFFICE: clients with their locations and client users; employees and branches read-only. A button for an action the role can't do isn't shown
+- No frontend tests for now (Angular schematics with `skipTests`). Frontend screens are verified by hand against the running backend
 
 ## Photo storage
 
