@@ -6,7 +6,7 @@
 -- status_transitions is not in the list: its rows are reference data from schema.sql.
 -- No BEGIN/COMMIT here: psql --single-transaction does that, and SeedDataTest runs this file inside its own transaction.
 
-TRUNCATE TABLE branches, clients, locations, users, order_sequences, orders RESTART IDENTITY CASCADE;
+TRUNCATE TABLE branches, clients, locations, users, order_sequences, orders, order_notes RESTART IDENTITY CASCADE;
 
 INSERT INTO branches (name, city) VALUES
     ('Kricco Zagreb', 'Zagreb'),
@@ -63,3 +63,9 @@ INSERT INTO orders (order_number, branch_id, client_id, location_id, contact_per
      'SAME_DAY',   'PENDING',     NULL, '2026-09-04 08:00:00+00', '2026-09-04 08:00:00+00'),
     ('005/26', 5, 2, 5, 'Ana Anić',    '091 234 5678', 'Redovno održavanje sustava grijanja',
      'SIX_MONTHS', 'PENDING',     NULL, '2026-09-05 08:00:00+00', '2026-09-05 08:00:00+00');
+
+-- Notes on the orders the servicer works on. User 2 = office, user 3 = servicer.
+INSERT INTO order_notes (order_id, author_id, text, created_at) VALUES
+    (1, 3, 'Zamijenjeno 12 pločica, fuge zapunjene.',              '2026-09-03 14:30:00+00'),
+    (1, 2, 'Klijent potvrdio da je sve u redu.',                   '2026-09-03 16:00:00+00'),
+    (2, 3, 'Potreban dodatni materijal, dolazim ponovno sutra.',   '2026-09-02 10:00:00+00');

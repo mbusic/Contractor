@@ -137,7 +137,7 @@ For employees. Client users go through PortalService.
 | `OrderDto assignServicer(Long id, Long servicerId, Long version, User currentUser)` | Version check, then the office assigns or reassigns |
 | `void releaseOrdersOf(User servicer)` | For UserService. The servicer's IN_PROGRESS orders go through `applyStatus(PENDING)`, which unassigns them. DRAFT, RESOLVED and CANCELLED orders keep the servicer as history |
 | `OrderDto updateActualCosts(Long id, CostsRequest costs, Long version, User currentUser)` | Row check, version check, full replace of the actual cost fields. Any status |
-| `OrderDto addNote(Long id, String text, User currentUser)` | Row check. Author = currentUser |
+| `OrderDto addNote(Long id, String text, User currentUser)` | Row check, any status. Author = currentUser. Added through `Order.notes` (cascade) and flushed, so the response has the note's ID and createdAt |
 | `OrderDto addPhoto(Long id, MultipartFile file, User currentUser)` | Row check, then `storePhoto` |
 | `void deletePhoto(Long orderId, Long photoId, User currentUser)` | Row check [S6], deletes the row and the file |
 | `String getDocument(Long id, DocumentType type, User currentUser)` | Row check [S4], then `DocumentService.render` |

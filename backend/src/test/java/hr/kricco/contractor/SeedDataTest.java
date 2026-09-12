@@ -143,6 +143,19 @@ class SeedDataTest {
         assertThat(resolved.getAssignedServicer().getUsername()).isEqualTo("servicer");
     }
 
+    // Also checks @OrderBy on Order.notes: the notes are loaded from the database, newest first
+    @Test
+    void seedResolvedOrderHasNotesNewestFirst() {
+        Order resolved = orderRepository.findAll().stream()
+                .filter(order -> order.getOrderNumber().equals("001/26"))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(resolved.getNotes())
+                .extracting(note -> note.getAuthor().getUsername())
+                .containsExactly("office", "servicer");
+    }
+
     // Catches a wrong file encoding when the script is read
     @Test
     void seedKeepsCroatianLetters() {

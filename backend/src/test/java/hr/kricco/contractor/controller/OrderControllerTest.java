@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -70,6 +71,9 @@ class OrderControllerTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private Branch zagreb;
     private Client company;
@@ -292,6 +296,19 @@ class OrderControllerTest {
                 .andExpect(status().isNoContent());
 
         assertThat(orderRepository.findById(order.getId())).isEmpty();
+    }
+
+    @Test
+    void deleteRemovesTheOrdersNotes() throws Exception {
+        Order order = saveOrder(OrderStatus.IN_PROGRESS, servicer);
+        addNote(order, "Dolazim sutra", servicer).andExpect(status().isCreated());
+
+        mockMvc.perform(delete("/api/orders/{id}", order.getId()).with(as(admin)))
+                .andExpect(status().isNoContent());
+        // The test transaction never commits, so flush by hand: a note left behind would fail on its foreign key
+        orderRepository.flush();
+
+        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM order_notes", Integer.class)).isZero();
     }
 
     // Status changes
@@ -642,6 +659,59 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.detail").value("Changed by someone else. Reload and try again."));
     }
 
+    // Notes
+
+    @Test
+    void addNoteReturnsOrderWithNotesNewestFirst() throws Exception {
+        Order order = saveOrder(OrderStatus.IN_PROGRESS, servicer);
+        addNote(order, "Stigao na lokaciju", servicer).andExpect(status().isCreated());
+
+        addNote(order, "Potreban dodatni materijal", servicer)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.notes.length()").value(2))
+                .andExpect(jsonPath("$.notes[0].text").value("Potreban dodatni materijal"))
+                .andExpect(jsonPath("$.notes[0].id").value(notNullValue()))
+                .andExpect(jsonPath("$.notes[0].authorId").value(servicer.getId()))
+                .andExpect(jsonPath("$.notes[0].authorName").value("Test servicer"))
+                .andExpect(jsonPath("$.notes[0].createdAt").value(notNullValue()))
+                .andExpect(jsonPath("$.notes[1].text").value("Stigao na lokaciju"))
+                .andExpect(jsonPath("$.version").value(0));
+    }
+
+    @Test
+    void officeCanAddNoteToCancelledOrder() throws Exception {
+        Order order = saveOrder(OrderStatus.CANCELLED, null);
+
+        addNote(order, "Klijent otkazao telefonom", office)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.notes[0].authorName").value("Test office"));
+    }
+
+    @Test
+    void servicerCannotAddNoteToAnotherServicersOrder() throws Exception {
+        Order order = saveOrder(OrderStatus.IN_PROGRESS, otherServicer);
+
+        addNote(order, "Nije moj nalog", servicer)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.detail").value("You can't change this order"));
+    }
+
+    @Test
+    void blankNoteReturnsBadRequest() throws Exception {
+        Order order = saveOrder(OrderStatus.IN_PROGRESS, servicer);
+
+        addNote(order, "   ", servicer)
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void noteLongerThan2000CharactersReturnsBadRequest() throws Exception {
+        Order order = saveOrder(OrderStatus.IN_PROGRESS, servicer);
+
+        addNote(order, "a".repeat(2001), servicer)
+                .andExpect(status().isBadRequest());
+    }
+
     // Access by role
 
     // Valid bodies on purpose: the body is validated before @PreAuthorize runs, so a bad body would give 400
@@ -661,6 +731,9 @@ class OrderControllerTest {
                         """),
                 put("/api/orders/1/actual-costs").contentType(MediaType.APPLICATION_JSON).content("""
                         {"costs": {}, "version": 0}
+                        """),
+                post("/api/orders/1/notes").contentType(MediaType.APPLICATION_JSON).content("""
+                        {"text": "Note"}
                         """));
     }
 
@@ -698,6 +771,14 @@ class OrderControllerTest {
                 .content("""
                         {"status": "%s", "version": %d}
                         """.formatted(status, order.getVersion())));
+    }
+
+    private ResultActions addNote(Order order, String text, User user) throws Exception {
+        return mockMvc.perform(post("/api/orders/{id}/notes", order.getId()).with(as(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"text": "%s"}
+                        """.formatted(text)));
     }
 
     // Wraps the costs JSON and sends the order's current version, see changeStatus

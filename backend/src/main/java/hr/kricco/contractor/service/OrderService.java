@@ -5,6 +5,7 @@ import hr.kricco.contractor.dto.ClientSummaryDto;
 import hr.kricco.contractor.dto.CostsDto;
 import hr.kricco.contractor.dto.CostsRequest;
 import hr.kricco.contractor.dto.LocationDto;
+import hr.kricco.contractor.dto.NoteDto;
 import hr.kricco.contractor.dto.OrderDto;
 import hr.kricco.contractor.dto.OrderRequest;
 import hr.kricco.contractor.dto.OrderSummaryDto;
@@ -14,6 +15,7 @@ import hr.kricco.contractor.entity.Client;
 import hr.kricco.contractor.entity.Costs;
 import hr.kricco.contractor.entity.Location;
 import hr.kricco.contractor.entity.Order;
+import hr.kricco.contractor.entity.OrderNote;
 import hr.kricco.contractor.entity.OrderStatus;
 import hr.kricco.contractor.entity.Role;
 import hr.kricco.contractor.entity.User;
@@ -98,7 +100,7 @@ public class OrderService {
         return toDto(orderRepository.saveAndFlush(order), currentUser);
     }
 
-    // In any status. Notes and photos are deleted with it once they exist.
+    // In any status. Its notes are deleted with it (cascade on Order.notes), photos once they exist.
     @Transactional
     public void deleteOrder(Long id) {
         Order order = findOrder(id);
@@ -164,6 +166,23 @@ public class OrderService {
         }
         VersionCheck.check(version, order.getVersion());
         order.setActualCosts(toCosts(costs));
+        return toDto(orderRepository.saveAndFlush(order), currentUser);
+    }
+
+    // In any status. A SERVICER only on orders assigned to them.
+    @Transactional
+    public OrderDto addNote(Long id, String text, User currentUser) {
+        Order order = findOrder(id);
+        if (!canChange(order, currentUser)) {
+            throw new ForbiddenException("You can't change this order");
+        }
+        OrderNote note = new OrderNote();
+        note.setOrder(order);
+        note.setAuthor(userRepository.getReferenceById(currentUser.getId()));
+        note.setText(text);
+        // Newest first, like @OrderBy on Order.notes
+        order.getNotes().addFirst(note);
+        // The flush inserts the note (cascade), so the response has its ID and createdAt
         return toDto(orderRepository.saveAndFlush(order), currentUser);
     }
 
@@ -351,6 +370,7 @@ public class OrderService {
                 toCostsDto(order.getEstimatedCosts()),
                 toCostsDto(order.getActualCosts()),
                 toCostDifference(order.getEstimatedCosts(), order.getActualCosts()),
+                order.getNotes().stream().map(this::toNoteDto).toList(),
                 order.getCreatedAt(),
                 order.getUpdatedAt(),
                 order.getVersion());
@@ -402,6 +422,11 @@ public class OrderService {
             return null;
         }
         return new ServicerDto(servicer.getId(), servicer.getDisplayName());
+    }
+
+    private NoteDto toNoteDto(OrderNote note) {
+        User author = note.getAuthor();
+        return new NoteDto(note.getId(), note.getText(), author.getId(), author.getDisplayName(), note.getCreatedAt());
     }
 
     private CostsDto toCostsDto(Costs costs) {

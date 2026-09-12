@@ -119,7 +119,7 @@ The table is `orders` because `order` is a reserved word in SQL.
 | actualCosts              | Costs            | Used for the report and the invoice. Columns `actual_km`, `actual_work_hours`, ... |
 | createdAt                | Instant          | Set on insert                                                           |
 | updatedAt                | Instant          | Set on every update                                                     |
-| notes                    | List<OrderNote>  | Cascade all, orphan removal                                             |
+| notes                    | List<OrderNote>  | Cascade all, orphan removal. Newest first                               |
 | photos                   | List<OrderPhoto> | Cascade all, orphan removal                                             |
 - Difference between estimated and actual (PR5): the order detail shows actual - estimated for km, work hours, number of workers, total hours and material. It's calculated, not stored. If either value is missing, the difference is shown as "-".
 - The actual costs are entered by hand until the time sheet is designed (see Deferred). They can be changed in any status: the office corrects them after RESOLVED, and a cancelled job can still have travel costs.
@@ -168,9 +168,13 @@ Embeddable, not an entity: its fields are columns of `orders`. Order uses it twi
 | Field     | Type          | Notes         |
 |-----------|---------------|---------------|
 | order     | Order         | required      |
-| text      | String (TEXT) | required      |
-| author    | User          | required [C3] |
+| text      | String (TEXT) | required, max 2000 characters (checked on the request) |
+| author    | User          | required [C3]. Always an employee: client users can't write notes |
 | createdAt | Instant       | Set on insert |
+
+- Only added, never edited or deleted on its own. Notes go away only with their order.
+- Can be added in any order status, by anyone who may change the order (ADMIN/OFFICE any order, SERVICER only orders assigned to them).
+- The order lists its notes newest first. The UI can sort them the other way by itself, since the order detail has all of them.
 
 ### OrderPhoto
 

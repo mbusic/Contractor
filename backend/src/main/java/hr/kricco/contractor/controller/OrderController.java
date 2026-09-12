@@ -2,6 +2,7 @@ package hr.kricco.contractor.controller;
 
 import hr.kricco.contractor.dto.ActualCostsRequest;
 import hr.kricco.contractor.dto.AssignmentRequest;
+import hr.kricco.contractor.dto.NoteRequest;
 import hr.kricco.contractor.dto.OrderDto;
 import hr.kricco.contractor.dto.OrderRequest;
 import hr.kricco.contractor.dto.OrderSummaryDto;
@@ -95,5 +96,14 @@ public class OrderController {
     public OrderDto updateActualCosts(@PathVariable Long id, @Valid @RequestBody ActualCostsRequest request,
                                       @AuthenticationPrincipal UserPrincipal principal) {
         return orderService.updateActualCosts(id, request.costs(), request.version(), principal.getUser());
+    }
+
+    // No version: a note is a new row, the order itself doesn't change
+    @PostMapping("/{id}/notes")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE', 'SERVICER')")
+    public OrderDto addNote(@PathVariable Long id, @Valid @RequestBody NoteRequest request,
+                            @AuthenticationPrincipal UserPrincipal principal) {
+        return orderService.addNote(id, request.text(), principal.getUser());
     }
 }

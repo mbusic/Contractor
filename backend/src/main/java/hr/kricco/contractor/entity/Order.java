@@ -1,6 +1,7 @@
 package hr.kricco.contractor.entity;
 
 import jakarta.persistence.AttributeOverride;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
@@ -12,6 +13,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import lombok.Getter;
@@ -21,6 +24,8 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 // One repair or maintenance job. The table is "orders" because "order" is a reserved word in SQL.
 @Entity
@@ -99,6 +104,11 @@ public class Order {
     @UpdateTimestamp
     @Column(nullable = false)
     private Instant updatedAt;
+
+    // Newest first. Saved and deleted together with the order. Adding a note doesn't change the order's version.
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("createdAt DESC, id DESC")
+    private List<OrderNote> notes = new ArrayList<>();
 
     // Optimistic locking: every update increases it, an update with an older version fails
     @Version

@@ -119,7 +119,7 @@ Every endpoint checks the role through `@PreAuthorize` on its controller method 
 | POST   | `/api/orders/{id}/accept`              | SERVICER               | -                  | OrderDto               | Order must be PENDING and unassigned, else 409. Assigns it to the caller and moves it to IN_PROGRESS. When two servicers accept at once, the second also gets 409 [A6] |
 | PUT    | `/api/orders/{id}/assignment`          | ADMIN, OFFICE          | AssignmentRequest  | OrderDto               | PENDING: assign + move to IN_PROGRESS. IN_PROGRESS: reassign. Other statuses: 409. 400 if the user is unknown, isn't a SERVICER, or is deactivated [A6] |
 | PUT    | `/api/orders/{id}/actual-costs`        | employees              | ActualCostsRequest | OrderDto               | Full replace of the actual costs, in any status. SERVICER: only on orders assigned to them (403) [A7] |
-| POST   | `/api/orders/{id}/notes`               | employees              | NoteRequest        | OrderDto (201)         | SERVICER: only on orders assigned to them |
+| POST   | `/api/orders/{id}/notes`               | employees              | NoteRequest        | OrderDto (201)         | In any status. SERVICER: only on orders assigned to them (403). No version: the note is a new row, the order doesn't change |
 | POST   | `/api/orders/{id}/photos`              | employees              | multipart `file`   | OrderDto (201)         | JPEG, PNG, GIF or WebP only. Max 6 per order (400). SERVICER: only on orders assigned to them |
 | DELETE | `/api/orders/{id}/photos/{photoId}`    | employees              | -                  | 204                    | SERVICER: only on orders assigned to them [A9] |
 | GET    | `/api/orders/{id}/documents/{type}`    | ADMIN, OFFICE          | -                  | HTML page (`text/html`) | `{type}` = DocumentType value (`QUOTE`, `WORK_ORDER`, `REPORT`, `INVOICE`). Built from the current order data, not stored [A8] |
@@ -189,11 +189,12 @@ Requests end in `Request`, responses in `Dto`. "?" = optional.
 | ActualCostsRequest  | costs: CostsRequest (required, `{}` clears all four fields), version (the order's version) |
 | StatusChangeRequest | status, version |
 | AssignmentRequest   | servicerId, version |
-| NoteRequest         | text |
+| NoteRequest         | text (required, max 2000 characters) |
 | NoteDto             | id, text, authorId, authorName, createdAt |
 | PhotoDto            | id, url |
 
 - `locationText` is the location as one line ("address, city"), for list columns.
+- `OrderDto.notes` is newest first. The response always has all notes, so the UI sorts the other way on its own, without an API parameter.
 - ActualCostsRequest wraps CostsRequest instead of adding a version to it, because CostsRequest is also nested in OrderRequest, where the order's version is already on the top level.
 ### Portal
 

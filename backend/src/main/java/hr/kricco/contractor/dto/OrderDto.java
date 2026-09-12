@@ -8,7 +8,7 @@ import java.util.List;
 
 // The order detail. allowedNextStatuses is empty when the caller may not change the order.
 // costDifference is actual - estimated per field, null where either value is missing.
-// Notes and photos come with their own slices.
+// notes are newest first. Photos come with their own slice.
 public record OrderDto(
         Long id,
         String orderNumber,
@@ -26,6 +26,7 @@ public record OrderDto(
         CostsDto estimatedCosts,
         CostsDto actualCosts,
         CostsDto costDifference,
+        List<NoteDto> notes,
         Instant createdAt,
         Instant updatedAt,
         Long version

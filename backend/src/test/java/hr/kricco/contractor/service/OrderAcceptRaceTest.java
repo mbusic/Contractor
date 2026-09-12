@@ -63,7 +63,7 @@ class OrderAcceptRaceTest {
 
     @AfterEach
     void cleanUp() {
-        jdbcTemplate.execute("TRUNCATE TABLE branches, clients, locations, users, order_sequences, orders RESTART IDENTITY CASCADE");
+        jdbcTemplate.execute("TRUNCATE TABLE branches, clients, locations, users, order_sequences, orders, order_notes RESTART IDENTITY CASCADE");
     }
 
     @Test
