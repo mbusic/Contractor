@@ -33,6 +33,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -142,6 +143,25 @@ class ClientControllerTest {
                                 {"type": "INDIVIDUAL", "name": "Ana Anić", "email": "not-an-email"}
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    // Pins the fieldErrors format that every Bean Validation error uses: one entry per field, sorted by field
+    @Test
+    void invalidFieldsAreListedInFieldErrors() throws Exception {
+        mockMvc.perform(post("/api/clients")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type": "INDIVIDUAL", "name": "", "email": "not-an-email"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Invalid request content."))
+                .andExpect(jsonPath("$.instance").value("/api/clients"))
+                .andExpect(jsonPath("$.fieldErrors.length()").value(2))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("email"))
+                .andExpect(jsonPath("$.fieldErrors[0].message").value("must be a well-formed email address"))
+                .andExpect(jsonPath("$.fieldErrors[1].field").value("name"))
+                .andExpect(jsonPath("$.fieldErrors[1].message").value("must not be blank"));
     }
 
     @Test

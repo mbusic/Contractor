@@ -629,7 +629,8 @@ class OrderControllerTest {
         updateActualCosts(order, """
                 {"km": -5}
                 """, servicer)
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("costs.km"));
     }
 
     @Test

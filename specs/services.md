@@ -15,7 +15,7 @@ Rule: services don't know about HTTP. They never import `org.springframework.htt
 
 - A service reports an error by throwing an exception from the `exception` package, with a short message.
 - `ApiExceptionHandler` (a `@RestControllerAdvice` in `controller`) is the only place that maps these exceptions to HTTP. Each one gets its status and a Problem Details body, and the message goes into `detail`.
-- Bean Validation errors and other Spring MVC errors go through Spring Boot's built-in handler (`ProblemDetailsExceptionHandler`, `@Order(0)`), which runs before ours. A missing or invalid token is answered by the security filter (401, empty body).
+- `ApiExceptionHandler` extends Spring's `ResponseEntityExceptionHandler`, so the base class answers Spring MVC's own errors (unreadable JSON, unknown URL, wrong method, ...) with Problem Details. Because of that, Spring Boot doesn't register its built-in `ProblemDetailsExceptionHandler`. `handleMethodArgumentNotValid` is overridden to add `fieldErrors` to Bean Validation errors (rest-api.md "Conventions"). A missing or invalid token is answered by the security filter (401, empty body).
 
 | Exception                   | Status | Thrown when                                     | detail |
 |-----------------------------|--------|-------------------------------------------------|--------|

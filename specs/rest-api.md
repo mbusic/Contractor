@@ -12,7 +12,12 @@ REST endpoints of the Contractor backend. Source: the controllers of the templat
 - PUT is a full replace: the request carries all fields of the form, and a missing or null field means "empty". [A3] The one exception is the password on user updates: empty means "keep the current password".
 - No pagination - lists return all rows. The POC has little data.
 - Optimistic locking: [A13] every editable row (branch, client, location, user, order) has a `version`, and the DTOs return it. A request that changes an existing row sends back the version it read: all PUT bodies, StatusChangeRequest, AssignmentRequest, and the actual-costs body. No version on create, delete, accept (no body, it relies on `@Version` on the server), and adding notes or photos (they add rows, the order itself doesn't change). Portal submit has no body either - decided with the portal slice. Missing on an update -> 400 "Version is required". Different from the row's version (someone saved in between) -> 409 "Changed by someone else. Reload and try again." The response of a successful write carries the new version.
-- Validation: request DTOs use Bean Validation (`@Valid`, `@NotBlank`, ...).
+- Validation: request DTOs use Bean Validation (`@Valid`, `@NotBlank`, ...). A failed check gives 400 with detail "Invalid request content." and a `fieldErrors` list, one entry per failed field, sorted by field. Nested fields have a path (`costs.km`). The messages are Hibernate Validator's English defaults. JSON that can't be read (bad syntax, unknown enum value) is a 400 "Failed to read request" without `fieldErrors`.
+
+  ```json
+  { "type": "about:blank", "title": "Bad Request", "status": 400, "detail": "Invalid request content.", "instance": "/api/clients",
+    "fieldErrors": [ { "field": "email", "message": "must be a well-formed email address" }, { "field": "name", "message": "must not be blank" } ] }
+  ```
 - Errors use the RFC 9457 Problem Details format, through Spring's built-in support (`spring.mvc.problemdetails.enabled=true`). Services throw exceptions from the `exception` package, and `ApiExceptionHandler` turns them into Problem Details with the message in the `detail` field (see services.md "Errors"). [A12] The one exception: a 401 for a missing or invalid token comes from the security filter and has an empty body.
 
   ```json
