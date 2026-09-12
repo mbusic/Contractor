@@ -539,6 +539,109 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.detail").value("Changed by someone else. Reload and try again."));
     }
 
+    // Actual costs
+
+    @Test
+    void updateActualCostsReplacesThemAndShowsDifference() throws Exception {
+        Order order = saveOrder(OrderStatus.RESOLVED, servicer);
+        Costs estimated = new Costs();
+        estimated.setKm(80);
+        estimated.setWorkHours(new BigDecimal("8.00"));
+        estimated.setNumberOfWorkers(2);
+        estimated.setMaterialCost(new BigDecimal("50.00"));
+        order.setEstimatedCosts(estimated);
+
+        updateActualCosts(order, """
+                {"km": 95, "workHours": 7.5, "numberOfWorkers": 3, "materialCost": 42.50}
+                """, office)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.actualCosts.km").value(95))
+                .andExpect(jsonPath("$.actualCosts.totalHours").value(22.5))
+                .andExpect(jsonPath("$.costDifference.km").value(15))
+                .andExpect(jsonPath("$.costDifference.workHours").value(-0.5))
+                .andExpect(jsonPath("$.costDifference.numberOfWorkers").value(1))
+                .andExpect(jsonPath("$.costDifference.totalHours").value(6.5))
+                .andExpect(jsonPath("$.costDifference.materialCost").value(-7.5))
+                .andExpect(jsonPath("$.estimatedCosts.km").value(80))
+                .andExpect(jsonPath("$.version").value(1));
+    }
+
+    @Test
+    void costDifferenceIsEmptyWhereAValueIsMissing() throws Exception {
+        Order order = saveOrder(OrderStatus.IN_PROGRESS, servicer);
+        Costs estimated = new Costs();
+        estimated.setKm(80);
+        order.setEstimatedCosts(estimated);
+
+        updateActualCosts(order, """
+                {"km": 70, "workHours": 4}
+                """, servicer)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.costDifference.km").value(-10))
+                .andExpect(jsonPath("$.costDifference.workHours").value(nullValue()))
+                .andExpect(jsonPath("$.costDifference.totalHours").value(nullValue()));
+    }
+
+    @Test
+    void emptyActualCostsClearAllFields() throws Exception {
+        Order order = saveOrder(OrderStatus.IN_PROGRESS, servicer);
+        Costs actual = new Costs();
+        actual.setKm(40);
+        order.setActualCosts(actual);
+
+        updateActualCosts(order, "{}", servicer)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.actualCosts.km").value(nullValue()));
+    }
+
+    @Test
+    void servicerCannotUpdateActualCostsOfAnotherServicersOrder() throws Exception {
+        Order order = saveOrder(OrderStatus.IN_PROGRESS, otherServicer);
+
+        updateActualCosts(order, """
+                {"km": 95}
+                """, servicer)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.detail").value("You can't change this order"));
+    }
+
+    @Test
+    void negativeActualCostReturnsBadRequest() throws Exception {
+        Order order = saveOrder(OrderStatus.IN_PROGRESS, servicer);
+
+        updateActualCosts(order, """
+                {"km": -5}
+                """, servicer)
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void updateActualCostsWithoutCostsReturnsBadRequest() throws Exception {
+        Order order = saveOrder(OrderStatus.IN_PROGRESS, servicer);
+
+        mockMvc.perform(put("/api/orders/{id}/actual-costs", order.getId()).with(as(servicer))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"version": 0}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void updateActualCostsWithStaleVersionReturnsConflict() throws Exception {
+        Order order = saveOrder(OrderStatus.IN_PROGRESS, servicer);
+        order.setDescription("Saved by someone else");
+        orderRepository.saveAndFlush(order);
+
+        mockMvc.perform(put("/api/orders/{id}/actual-costs", order.getId()).with(as(servicer))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"costs": {"km": 95}, "version": 0}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Changed by someone else. Reload and try again."));
+    }
+
     // Access by role
 
     // Valid bodies on purpose: the body is validated before @PreAuthorize runs, so a bad body would give 400
@@ -555,6 +658,9 @@ class OrderControllerTest {
                 post("/api/orders/1/accept"),
                 put("/api/orders/1/assignment").contentType(MediaType.APPLICATION_JSON).content("""
                         {"servicerId": 1, "version": 0}
+                        """),
+                put("/api/orders/1/actual-costs").contentType(MediaType.APPLICATION_JSON).content("""
+                        {"costs": {}, "version": 0}
                         """));
     }
 
@@ -592,6 +698,15 @@ class OrderControllerTest {
                 .content("""
                         {"status": "%s", "version": %d}
                         """.formatted(status, order.getVersion())));
+    }
+
+    // Wraps the costs JSON and sends the order's current version, see changeStatus
+    private ResultActions updateActualCosts(Order order, String costsJson, User user) throws Exception {
+        return mockMvc.perform(put("/api/orders/{id}/actual-costs", order.getId()).with(as(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"costs": %s, "version": %d}
+                        """.formatted(costsJson.strip(), order.getVersion())));
     }
 
     // Sends the order's current version, see changeStatus

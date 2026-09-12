@@ -1,5 +1,6 @@
 package hr.kricco.contractor.controller;
 
+import hr.kricco.contractor.dto.ActualCostsRequest;
 import hr.kricco.contractor.dto.AssignmentRequest;
 import hr.kricco.contractor.dto.OrderDto;
 import hr.kricco.contractor.dto.OrderRequest;
@@ -86,5 +87,13 @@ public class OrderController {
     public OrderDto assign(@PathVariable Long id, @Valid @RequestBody AssignmentRequest request,
                            @AuthenticationPrincipal UserPrincipal principal) {
         return orderService.assignServicer(id, request.servicerId(), request.version(), principal.getUser());
+    }
+
+    // Separate from PUT order, so a servicer can enter the costs without editing the rest of the order
+    @PutMapping("/{id}/actual-costs")
+    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE', 'SERVICER')")
+    public OrderDto updateActualCosts(@PathVariable Long id, @Valid @RequestBody ActualCostsRequest request,
+                                      @AuthenticationPrincipal UserPrincipal principal) {
+        return orderService.updateActualCosts(id, request.costs(), request.version(), principal.getUser());
     }
 }

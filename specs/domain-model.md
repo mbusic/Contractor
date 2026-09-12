@@ -122,7 +122,7 @@ The table is `orders` because `order` is a reserved word in SQL.
 | notes                    | List<OrderNote>  | Cascade all, orphan removal                                             |
 | photos                   | List<OrderPhoto> | Cascade all, orphan removal                                             |
 - Difference between estimated and actual (PR5): the order detail shows actual - estimated for km, work hours, number of workers, total hours and material. It's calculated, not stored. If either value is missing, the difference is shown as "-".
-- The actual costs are entered by hand until the time sheet is designed (see Deferred).
+- The actual costs are entered by hand until the time sheet is designed (see Deferred). They can be changed in any status: the office corrects them after RESOLVED, and a cancelled job can still have travel costs.
 - **Submitted** = PENDING, IN_PROGRESS or RESOLVED. A submitted order always has a client, a location and an order number. The service checks client and location on every change into a submitted status and on every PUT of a submitted order (400), and takes the number the first time the order becomes submitted. DRAFT and CANCELLED orders can be incomplete, so these columns are nullable.
 - This is stricter than "check when leaving DRAFT": a cancelled draft reopened to PENDING is checked too, and a PUT can't clear the client of a PENDING order.
 

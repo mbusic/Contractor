@@ -128,7 +128,7 @@ For employees. Client users go through PortalService.
 | Method | Does |
 |--------|------|
 | `List<OrderSummaryDto> getOrders(User currentUser)` | ADMIN/OFFICE: all. SERVICER: assigned to them + unassigned PENDING. Newest first |
-| `OrderDto getOrder(Long id, User currentUser)` | Row check. Fills `allowedNextStatuses` from StatusTransitionService (empty if the user may not change the order, without IN_PROGRESS if no servicer is assigned), and calculates total hours and `costDifference` |
+| `OrderDto getOrder(Long id, User currentUser)` | Row check. Fills `allowedNextStatuses` from StatusTransitionService (empty if the user may not change the order, without IN_PROGRESS if no servicer is assigned), and calculates total hours and `costDifference` (every OrderDto response has them) |
 | `OrderDto createOrder(OrderRequest req, User currentUser)` | New DRAFT without a number. `currentUser` is only used for `allowedNextStatuses` in the response |
 | `OrderDto updateOrder(Long id, OrderRequest req, User currentUser)` | Version check, full replace of order data and estimated costs, in any status. For a submitted order, client and location stay required (400) |
 | `void deleteOrder(Long id)` | Deletes the order (with its notes and photos), then the photo files |
@@ -136,7 +136,7 @@ For employees. Client users go through PortalService.
 | `OrderDto acceptOrder(Long id, User currentUser)` | Servicer takes an unassigned PENDING order |
 | `OrderDto assignServicer(Long id, Long servicerId, Long version, User currentUser)` | Version check, then the office assigns or reassigns |
 | `void releaseOrdersOf(User servicer)` | For UserService. The servicer's IN_PROGRESS orders go through `applyStatus(PENDING)`, which unassigns them. DRAFT, RESOLVED and CANCELLED orders keep the servicer as history |
-| `OrderDto updateActualCosts(Long id, CostsRequest req, User currentUser)` | Row check, full replace of the actual cost fields |
+| `OrderDto updateActualCosts(Long id, CostsRequest costs, Long version, User currentUser)` | Row check, version check, full replace of the actual cost fields. Any status |
 | `OrderDto addNote(Long id, String text, User currentUser)` | Row check. Author = currentUser |
 | `OrderDto addPhoto(Long id, MultipartFile file, User currentUser)` | Row check, then `storePhoto` |
 | `void deletePhoto(Long orderId, Long photoId, User currentUser)` | Row check [S6], deletes the row and the file |

@@ -118,7 +118,7 @@ Every endpoint checks the role through `@PreAuthorize` on its controller method 
 | PATCH  | `/api/orders/{id}/status`              | employees              | StatusChangeRequest | OrderDto              | SERVICER: only on orders assigned to them (403). 409 if StatusTransition doesn't allow it, or IN_PROGRESS without a servicer. "Submit" of a draft = change to PENDING: 400 without client or location, takes the order number [A5]. A change to PENDING clears the servicer |
 | POST   | `/api/orders/{id}/accept`              | SERVICER               | -                  | OrderDto               | Order must be PENDING and unassigned, else 409. Assigns it to the caller and moves it to IN_PROGRESS. When two servicers accept at once, the second also gets 409 [A6] |
 | PUT    | `/api/orders/{id}/assignment`          | ADMIN, OFFICE          | AssignmentRequest  | OrderDto               | PENDING: assign + move to IN_PROGRESS. IN_PROGRESS: reassign. Other statuses: 409. 400 if the user is unknown, isn't a SERVICER, or is deactivated [A6] |
-| PUT    | `/api/orders/{id}/actual-costs`        | employees              | CostsRequest       | OrderDto               | SERVICER: only on orders assigned to them [A7] |
+| PUT    | `/api/orders/{id}/actual-costs`        | employees              | ActualCostsRequest | OrderDto               | Full replace of the actual costs, in any status. SERVICER: only on orders assigned to them (403) [A7] |
 | POST   | `/api/orders/{id}/notes`               | employees              | NoteRequest        | OrderDto (201)         | SERVICER: only on orders assigned to them |
 | POST   | `/api/orders/{id}/photos`              | employees              | multipart `file`   | OrderDto (201)         | JPEG, PNG, GIF or WebP only. Max 6 per order (400). SERVICER: only on orders assigned to them |
 | DELETE | `/api/orders/{id}/photos/{photoId}`    | employees              | -                  | 204                    | SERVICER: only on orders assigned to them [A9] |
@@ -186,6 +186,7 @@ Requests end in `Request`, responses in `Dto`. "?" = optional.
 | OrderDto            | id, orderNumber, status, allowedNextStatuses: List<OrderStatus>, urgency, branch: BranchDto, client: {id, type, name}, location: LocationDto, contactPerson, phone, email, description, assignedServicer: {id, displayName}, estimatedCosts: CostsDto, actualCosts: CostsDto, costDifference: CostsDto, notes: List<NoteDto>, photos: List<PhotoDto>, createdAt, updatedAt, version |
 | CostsRequest        | km?, workHours?, numberOfWorkers?, materialCost? - none negative. workHours max 9999.99, materialCost max 99999999.99 (the NUMERIC columns) |
 | CostsDto            | km, workHours, numberOfWorkers, totalHours, materialCost - `totalHours` is calculated. In `costDifference` every field is actual - estimated, or null if either value is missing |
+| ActualCostsRequest  | costs: CostsRequest (required, `{}` clears all four fields), version (the order's version) |
 | StatusChangeRequest | status, version |
 | AssignmentRequest   | servicerId, version |
 | NoteRequest         | text |
@@ -193,7 +194,7 @@ Requests end in `Request`, responses in `Dto`. "?" = optional.
 | PhotoDto            | id, url |
 
 - `locationText` is the location as one line ("address, city"), for list columns.
-- The actual-costs body (PUT `/api/orders/{id}/actual-costs`) needs a version too. CostsRequest is also nested in OrderRequest, so the exact request shape is decided with that slice.
+- ActualCostsRequest wraps CostsRequest instead of adding a version to it, because CostsRequest is also nested in OrderRequest, where the order's version is already on the top level.
 ### Portal
 
 | Name                  | Fields |

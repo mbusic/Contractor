@@ -31,6 +31,7 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Set;
 
@@ -151,6 +152,18 @@ public class OrderService {
         } else {
             throw new ConflictException("Only PENDING and IN_PROGRESS orders can be assigned");
         }
+        return toDto(orderRepository.saveAndFlush(order), currentUser);
+    }
+
+    // Full replace of the actual costs, in any status. A SERVICER only on orders assigned to them.
+    @Transactional
+    public OrderDto updateActualCosts(Long id, CostsRequest costs, Long version, User currentUser) {
+        Order order = findOrder(id);
+        if (!canChange(order, currentUser)) {
+            throw new ForbiddenException("You can't change this order");
+        }
+        VersionCheck.check(version, order.getVersion());
+        order.setActualCosts(toCosts(costs));
         return toDto(orderRepository.saveAndFlush(order), currentUser);
     }
 
@@ -336,6 +349,8 @@ public class OrderService {
                 order.getDescription(),
                 toServicerDto(order.getAssignedServicer()),
                 toCostsDto(order.getEstimatedCosts()),
+                toCostsDto(order.getActualCosts()),
+                toCostDifference(order.getEstimatedCosts(), order.getActualCosts()),
                 order.getCreatedAt(),
                 order.getUpdatedAt(),
                 order.getVersion());
@@ -389,13 +404,41 @@ public class OrderService {
         return new ServicerDto(servicer.getId(), servicer.getDisplayName());
     }
 
-    // Hibernate loads an embedded object as null when all its columns are empty
     private CostsDto toCostsDto(Costs costs) {
-        if (costs == null) {
-            return new CostsDto(null, null, null, null, null);
-        }
+        Costs costsOrEmpty = orEmpty(costs);
         return new CostsDto(
-                costs.getKm(), costs.getWorkHours(), costs.getNumberOfWorkers(),
-                costs.getTotalHours(), costs.getMaterialCost());
+                costsOrEmpty.getKm(), costsOrEmpty.getWorkHours(), costsOrEmpty.getNumberOfWorkers(),
+                costsOrEmpty.getTotalHours(), costsOrEmpty.getMaterialCost());
+    }
+
+    // Actual - estimated for each field, null where either value is missing (domain-model PR5)
+    private CostsDto toCostDifference(Costs estimated, Costs actual) {
+        Costs estimatedOrEmpty = orEmpty(estimated);
+        Costs actualOrEmpty = orEmpty(actual);
+        return new CostsDto(
+                difference(actualOrEmpty.getKm(), estimatedOrEmpty.getKm()),
+                difference(actualOrEmpty.getWorkHours(), estimatedOrEmpty.getWorkHours()),
+                difference(actualOrEmpty.getNumberOfWorkers(), estimatedOrEmpty.getNumberOfWorkers()),
+                difference(actualOrEmpty.getTotalHours(), estimatedOrEmpty.getTotalHours()),
+                difference(actualOrEmpty.getMaterialCost(), estimatedOrEmpty.getMaterialCost()));
+    }
+
+    // Hibernate loads an embedded object as null when all its columns are empty
+    private Costs orEmpty(Costs costs) {
+        return costs == null ? new Costs() : costs;
+    }
+
+    private Integer difference(Integer actual, Integer estimated) {
+        if (actual == null || estimated == null) {
+            return null;
+        }
+        return actual - estimated;
+    }
+
+    private BigDecimal difference(BigDecimal actual, BigDecimal estimated) {
+        if (actual == null || estimated == null) {
+            return null;
+        }
+        return actual.subtract(estimated);
     }
 }
