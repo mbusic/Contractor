@@ -3,10 +3,14 @@ package hr.kricco.contractor.controller;
 import hr.kricco.contractor.entity.Branch;
 import hr.kricco.contractor.entity.Client;
 import hr.kricco.contractor.entity.ClientType;
+import hr.kricco.contractor.entity.Location;
+import hr.kricco.contractor.entity.Order;
+import hr.kricco.contractor.entity.OrderStatus;
 import hr.kricco.contractor.entity.Role;
 import hr.kricco.contractor.entity.User;
 import hr.kricco.contractor.repository.BranchRepository;
 import hr.kricco.contractor.repository.ClientRepository;
+import hr.kricco.contractor.repository.OrderRepository;
 import hr.kricco.contractor.repository.UserRepository;
 import hr.kricco.contractor.security.UserPrincipal;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,6 +53,9 @@ class UserControllerTest {
 
     @Autowired
     private ClientRepository clientRepository;
+
+    @Autowired
+    private OrderRepository orderRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -331,6 +338,64 @@ class UserControllerTest {
         assertThat(userRepository.findById(admin.getId()).orElseThrow().isActive()).isTrue();
     }
 
+    // A servicer who stops being an active SERVICER releases their IN_PROGRESS orders
+
+    @Test
+    void deactivatingServicerReleasesTheirInProgressOrders() throws Exception {
+        User servicer = saveUser("servicer", Role.SERVICER, zagreb);
+        Order inProgress = saveOrder(OrderStatus.IN_PROGRESS, servicer);
+        Order resolved = saveOrder(OrderStatus.RESOLVED, servicer);
+
+        mockMvc.perform(asAdmin(delete("/api/users/{id}", servicer.getId())))
+                .andExpect(status().isNoContent());
+
+        assertThat(inProgress.getStatus()).isEqualTo(OrderStatus.PENDING);
+        assertThat(inProgress.getAssignedServicer()).isNull();
+        assertThat(resolved.getAssignedServicer()).isEqualTo(servicer);
+    }
+
+    @Test
+    void updateToInactiveReleasesServicerOrders() throws Exception {
+        User servicer = saveUser("servicer", Role.SERVICER, zagreb);
+        Order inProgress = saveOrder(OrderStatus.IN_PROGRESS, servicer);
+
+        mockMvc.perform(asAdmin(put("/api/users/{id}", servicer.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(employeeJson("servicer", "", "SERVICER", zagreb.getId(), false)))
+                .andExpect(status().isOk());
+
+        assertThat(inProgress.getStatus()).isEqualTo(OrderStatus.PENDING);
+        assertThat(inProgress.getAssignedServicer()).isNull();
+    }
+
+    @Test
+    void changingServicerRoleReleasesTheirOrders() throws Exception {
+        User servicer = saveUser("servicer", Role.SERVICER, zagreb);
+        Order inProgress = saveOrder(OrderStatus.IN_PROGRESS, servicer);
+
+        mockMvc.perform(asAdmin(put("/api/users/{id}", servicer.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(employeeJson("servicer", "", "OFFICE", zagreb.getId(), true)))
+                .andExpect(status().isOk());
+
+        assertThat(inProgress.getStatus()).isEqualTo(OrderStatus.PENDING);
+        assertThat(inProgress.getAssignedServicer()).isNull();
+    }
+
+    @Test
+    void updateOfActiveServicerKeepsTheirOrders() throws Exception {
+        User servicer = saveUser("servicer", Role.SERVICER, zagreb);
+        Order inProgress = saveOrder(OrderStatus.IN_PROGRESS, servicer);
+
+        mockMvc.perform(asAdmin(put("/api/users/{id}", servicer.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(employeeJson("servicer2", "", "SERVICER", zagreb.getId(), true)))
+                .andExpect(status().isOk());
+
+        assertThat(inProgress.getStatus()).isEqualTo(OrderStatus.IN_PROGRESS);
+        assertThat(inProgress.getAssignedServicer()).isEqualTo(servicer);
+    }
+
     // Access by role: ADMIN and OFFICE read, only ADMIN writes
 
     @Test
@@ -403,6 +468,27 @@ class UserControllerTest {
         User user = saveUser(username, Role.CLIENT, null);
         user.setClient(client);
         return user;
+    }
+
+    // A submitted order needs a client and a location, also when it goes back to PENDING
+    private Order saveOrder(OrderStatus status, User servicer) {
+        Client client = new Client();
+        client.setType(ClientType.COMPANY);
+        client.setName("Petar Perić d.o.o.");
+        Location location = new Location();
+        location.setClient(client);
+        location.setAddress("A.G. Matoša 42");
+        location.setCity("Zagreb 10000");
+        client.getLocations().add(location);
+        clientRepository.save(client);
+
+        Order order = new Order();
+        order.setStatus(status);
+        order.setClient(client);
+        order.setLocation(location);
+        order.setOrderNumber("T" + System.nanoTime());
+        order.setAssignedServicer(servicer);
+        return orderRepository.save(order);
     }
 
     private User saveUser(String username, Role role, Branch branch) {

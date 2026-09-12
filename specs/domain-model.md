@@ -140,10 +140,12 @@ The table is `orders` because `order` is a reserved word in SQL.
    - The office assigns a servicer.
 
    Either way, the status moves from PENDING to IN_PROGRESS automatically. A servicer can only accept an order that is still unassigned, so when two servicers accept at the same time, the second one gets an error.
-3. **Reassign.** The office can change the servicer of an IN_PROGRESS order. The status stays IN_PROGRESS.
+3. **Reassign.** The office can change the servicer of an IN_PROGRESS order. The status stays IN_PROGRESS. Only active servicers can be assigned.
 4. **Finish or cancel.** The user changes the status by hand and picks from the allowed next statuses (see StatusTransition).
 
 - Assigning a servicer (by accepting or by the office) is only allowed for PENDING and IN_PROGRESS orders.
+- A PENDING order never has a servicer: PENDING means "waiting for a servicer". Every change to PENDING (e.g. IN_PROGRESS -> PENDING) clears the servicer, so the order shows up for all servicers again.
+- When a servicer is deactivated or gets another role, their IN_PROGRESS orders go back to PENDING (and so lose the servicer). Their DRAFT, RESOLVED and CANCELLED orders keep the servicer as history.
 - A status change to IN_PROGRESS needs an assigned servicer (409 "Assign a servicer first"). Otherwise the order would be invisible to every servicer. Accept and assign are the normal ways into IN_PROGRESS.
 - The automatic PENDING -> IN_PROGRESS change is a normal status change, so it must be allowed by StatusTransition. It is, in both the current and the target rules.
 

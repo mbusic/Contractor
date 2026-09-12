@@ -36,6 +36,7 @@ public class UserService {
     private final BranchRepository branchRepository;
     private final ClientRepository clientRepository;
     private final PasswordEncoder passwordEncoder;
+    private final OrderService orderService;
 
     // Employees
 
@@ -72,8 +73,12 @@ public class UserService {
             checkAdminKeepsAccess(request);
         }
         checkUsernameFreeIfChanged(user, request.username());
+        boolean wasActiveServicer = isActiveServicer(user);
         copyRequestFields(request, user);
         setPasswordIfGiven(user, request.password());
+        if (wasActiveServicer && !isActiveServicer(user)) {
+            orderService.releaseOrdersOf(user);
+        }
         return toDto(userRepository.saveAndFlush(user));
     }
 
@@ -83,6 +88,9 @@ public class UserService {
         User user = findEmployee(id);
         if (isSameUser(user, currentUser)) {
             throw new ConflictException("You can't deactivate your own account");
+        }
+        if (isActiveServicer(user)) {
+            orderService.releaseOrdersOf(user);
         }
         user.setActive(false);
         userRepository.save(user);
@@ -159,6 +167,11 @@ public class UserService {
         if (!request.active()) {
             throw new ConflictException("You can't deactivate your own account");
         }
+    }
+
+    // Only an active SERVICER can work on IN_PROGRESS orders. Losing that releases their orders.
+    private boolean isActiveServicer(User user) {
+        return user.getRole() == Role.SERVICER && user.isActive();
     }
 
     private boolean isSameUser(User user, User currentUser) {

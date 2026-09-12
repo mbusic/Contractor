@@ -16,7 +16,7 @@ REST endpoints of the Contractor backend. Source: the controllers of the templat
 - Errors use the RFC 9457 Problem Details format, through Spring's built-in support (`spring.mvc.problemdetails.enabled=true`). Services throw exceptions from the `exception` package, and `ApiExceptionHandler` turns them into Problem Details with the message in the `detail` field (see services.md "Errors"). [A12] The one exception: a 401 for a missing or invalid token comes from the security filter and has an empty body.
 
   ```json
-  { "type": "about:blank", "title": "Conflict", "status": 409, "detail": "Order is already assigned", "instance": "/api/orders/7/accept" }
+  { "type": "about:blank", "title": "Conflict", "status": 409, "detail": "Order is already taken or not pending", "instance": "/api/orders/7/accept" }
   ```
 
 | Status | When                                                                         |
@@ -81,8 +81,8 @@ Every endpoint checks the role through `@PreAuthorize` on its controller method 
 |--------|--------------------|---------------|-----------------|---------------|-------------------------------------------------|
 | GET    | `/api/users`       | ADMIN, OFFICE | -               | List<UserDto> | Active and deactivated employees, sorted by displayName. Optional `?role=SERVICER` - the office uses it to pick a servicer (the UI shows only active ones). 400 for `role=CLIENT` |
 | POST   | `/api/users`       | ADMIN         | EmployeeRequest | UserDto (201) | 409 if the username is taken                    |
-| PUT    | `/api/users/{id}`  | ADMIN         | EmployeeRequest | UserDto       | Empty password = keep the current one. `active: true` reactivates. 409 if you remove your own ADMIN role or deactivate yourself |
-| DELETE | `/api/users/{id}`  | ADMIN         | -               | 204           | Deactivates the account, nothing is deleted (domain-model Q3). 409 for your own account |
+| PUT    | `/api/users/{id}`  | ADMIN         | EmployeeRequest | UserDto       | Empty password = keep the current one. `active: true` reactivates. 409 if you remove your own ADMIN role or deactivate yourself. A servicer who is deactivated or gets another role releases their IN_PROGRESS orders (back to PENDING, unassigned) |
+| DELETE | `/api/users/{id}`  | ADMIN         | -               | 204           | Deactivates the account, nothing is deleted (domain-model Q3). 409 for your own account. A deactivated servicer releases their IN_PROGRESS orders (back to PENDING, unassigned) |
 
 - 404 "Employee not found" for an unknown ID or the ID of a client user.
 - 400 for a role/branch mismatch, an unknown `branchId`, a missing password on create, or a password over 72 bytes.
@@ -115,9 +115,9 @@ Every endpoint checks the role through `@PreAuthorize` on its controller method 
 | POST   | `/api/orders`                          | ADMIN, OFFICE          | OrderRequest       | OrderDto (201)         | Creates a DRAFT without a number. Location by `locationId` [A4] |
 | PUT    | `/api/orders/{id}`                     | ADMIN, OFFICE          | OrderRequest       | OrderDto               | Order data + estimated costs, in any status. 400 if a submitted order loses its client or location |
 | DELETE | `/api/orders/{id}`                     | ADMIN, OFFICE          | -                  | 204                    | In any status. Also deletes the photo files |
-| PATCH  | `/api/orders/{id}/status`              | employees              | StatusChangeRequest | OrderDto              | SERVICER: only on orders assigned to them (403). 409 if StatusTransition doesn't allow it, or IN_PROGRESS without a servicer. "Submit" of a draft = change to PENDING: 400 without client or location, takes the order number [A5] |
-| POST   | `/api/orders/{id}/accept`              | SERVICER               | -                  | OrderDto               | Order must be PENDING and unassigned, else 409. Assigns it to the caller and moves it to IN_PROGRESS [A6] |
-| PUT    | `/api/orders/{id}/assignment`          | ADMIN, OFFICE          | AssignmentRequest  | OrderDto               | PENDING: assign + move to IN_PROGRESS. IN_PROGRESS: reassign. Other statuses: 409. 400 if the user isn't a SERVICER [A6] |
+| PATCH  | `/api/orders/{id}/status`              | employees              | StatusChangeRequest | OrderDto              | SERVICER: only on orders assigned to them (403). 409 if StatusTransition doesn't allow it, or IN_PROGRESS without a servicer. "Submit" of a draft = change to PENDING: 400 without client or location, takes the order number [A5]. A change to PENDING clears the servicer |
+| POST   | `/api/orders/{id}/accept`              | SERVICER               | -                  | OrderDto               | Order must be PENDING and unassigned, else 409. Assigns it to the caller and moves it to IN_PROGRESS. When two servicers accept at once, the second also gets 409 [A6] |
+| PUT    | `/api/orders/{id}/assignment`          | ADMIN, OFFICE          | AssignmentRequest  | OrderDto               | PENDING: assign + move to IN_PROGRESS. IN_PROGRESS: reassign. Other statuses: 409. 400 if the user is unknown, isn't a SERVICER, or is deactivated [A6] |
 | PUT    | `/api/orders/{id}/actual-costs`        | employees              | CostsRequest       | OrderDto               | SERVICER: only on orders assigned to them [A7] |
 | POST   | `/api/orders/{id}/notes`               | employees              | NoteRequest        | OrderDto (201)         | SERVICER: only on orders assigned to them |
 | POST   | `/api/orders/{id}/photos`              | employees              | multipart `file`   | OrderDto (201)         | JPEG, PNG, GIF or WebP only. Max 6 per order (400). SERVICER: only on orders assigned to them |

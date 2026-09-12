@@ -1,6 +1,7 @@
 package hr.kricco.contractor.repository;
 
 import hr.kricco.contractor.entity.Order;
+import hr.kricco.contractor.entity.OrderStatus;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -26,6 +27,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             ORDER BY o.createdAt DESC, o.id DESC
             """)
     List<Order> findVisibleToServicer(@Param("servicerId") Long servicerId);
+
+    List<Order> findByAssignedServicerIdAndStatus(Long servicerId, OrderStatus status);
 
     boolean existsByBranchId(Long branchId);
 

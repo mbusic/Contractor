@@ -413,6 +413,132 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.detail").value("You can't change this order"));
     }
 
+    @Test
+    void movingInProgressOrderBackToPendingClearsServicer() throws Exception {
+        Order order = saveOrder(OrderStatus.IN_PROGRESS, servicer);
+
+        changeStatus(order, "PENDING", office)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.assignedServicer").value(nullValue()));
+    }
+
+    // Accept
+
+    @Test
+    void servicerAcceptsUnassignedPendingOrder() throws Exception {
+        Order order = saveOrder(OrderStatus.PENDING, null);
+
+        mockMvc.perform(post("/api/orders/{id}/accept", order.getId()).with(as(servicer)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.assignedServicer.id").value(servicer.getId()))
+                .andExpect(jsonPath("$.assignedServicer.displayName").value("Test servicer"))
+                .andExpect(jsonPath("$.version").value(1));
+    }
+
+    @Test
+    void acceptOrderOfAnotherServicerReturnsConflict() throws Exception {
+        Order order = saveOrder(OrderStatus.IN_PROGRESS, otherServicer);
+
+        mockMvc.perform(post("/api/orders/{id}/accept", order.getId()).with(as(servicer)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Order is already taken or not pending"));
+    }
+
+    @Test
+    void acceptDraftReturnsConflict() throws Exception {
+        Order draft = saveDraft(company, companySite);
+
+        mockMvc.perform(post("/api/orders/{id}/accept", draft.getId()).with(as(servicer)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Order is already taken or not pending"));
+    }
+
+    @Test
+    void officeCannotAcceptOrder() throws Exception {
+        Order order = saveOrder(OrderStatus.PENDING, null);
+
+        mockMvc.perform(post("/api/orders/{id}/accept", order.getId()).with(as(office)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.detail").value("Access denied"));
+    }
+
+    // Assignment
+
+    @Test
+    void assignPendingOrderMovesItToInProgress() throws Exception {
+        Order order = saveOrder(OrderStatus.PENDING, null);
+
+        assign(order, servicer.getId(), office)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.assignedServicer.id").value(servicer.getId()))
+                .andExpect(jsonPath("$.version").value(1));
+    }
+
+    @Test
+    void reassignInProgressOrderKeepsStatus() throws Exception {
+        Order order = saveOrder(OrderStatus.IN_PROGRESS, servicer);
+
+        assign(order, otherServicer.getId(), admin)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.assignedServicer.id").value(otherServicer.getId()));
+    }
+
+    @Test
+    void assignResolvedOrderReturnsConflict() throws Exception {
+        Order order = saveOrder(OrderStatus.RESOLVED, servicer);
+
+        assign(order, otherServicer.getId(), office)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Only PENDING and IN_PROGRESS orders can be assigned"));
+    }
+
+    @Test
+    void assignNonServicerReturnsBadRequest() throws Exception {
+        Order order = saveOrder(OrderStatus.PENDING, null);
+
+        assign(order, office.getId(), office)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("User is not a servicer"));
+    }
+
+    @Test
+    void assignDeactivatedServicerReturnsBadRequest() throws Exception {
+        Order order = saveOrder(OrderStatus.PENDING, null);
+        otherServicer.setActive(false);
+
+        assign(order, otherServicer.getId(), office)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Servicer is not active"));
+    }
+
+    @Test
+    void assignUnknownServicerReturnsBadRequest() throws Exception {
+        Order order = saveOrder(OrderStatus.PENDING, null);
+
+        assign(order, 999999L, office)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Servicer not found"));
+    }
+
+    @Test
+    void assignWithStaleVersionReturnsConflict() throws Exception {
+        Order order = saveOrder(OrderStatus.PENDING, null);
+        order.setDescription("Saved by someone else");
+        orderRepository.saveAndFlush(order);
+
+        mockMvc.perform(put("/api/orders/{id}/assignment", order.getId()).with(as(office))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"servicerId": %d, "version": 0}
+                                """.formatted(servicer.getId())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Changed by someone else. Reload and try again."));
+    }
+
     // Access by role
 
     // Valid bodies on purpose: the body is validated before @PreAuthorize runs, so a bad body would give 400
@@ -425,6 +551,10 @@ class OrderControllerTest {
                 delete("/api/orders/1"),
                 patch("/api/orders/1/status").contentType(MediaType.APPLICATION_JSON).content("""
                         {"status": "CANCELLED", "version": 0}
+                        """),
+                post("/api/orders/1/accept"),
+                put("/api/orders/1/assignment").contentType(MediaType.APPLICATION_JSON).content("""
+                        {"servicerId": 1, "version": 0}
                         """));
     }
 
@@ -440,13 +570,16 @@ class OrderControllerTest {
         return Stream.of(
                 post("/api/orders").contentType(MediaType.APPLICATION_JSON).content("{}"),
                 put("/api/orders/1").contentType(MediaType.APPLICATION_JSON).content("{}"),
-                delete("/api/orders/1"));
+                delete("/api/orders/1"),
+                put("/api/orders/1/assignment").contentType(MediaType.APPLICATION_JSON).content("""
+                        {"servicerId": 1, "version": 0}
+                        """));
     }
 
     @ParameterizedTest
     @MethodSource("officeOnlyEndpoints")
     @WithMockUser(roles = "SERVICER")
-    void servicerCannotCreateUpdateOrDeleteOrders(MockHttpServletRequestBuilder request) throws Exception {
+    void servicerCannotCallOfficeOnlyEndpoints(MockHttpServletRequestBuilder request) throws Exception {
         mockMvc.perform(request)
                 .andExpect(status().isForbidden());
     }
@@ -459,6 +592,15 @@ class OrderControllerTest {
                 .content("""
                         {"status": "%s", "version": %d}
                         """.formatted(status, order.getVersion())));
+    }
+
+    // Sends the order's current version, see changeStatus
+    private ResultActions assign(Order order, Long servicerId, User user) throws Exception {
+        return mockMvc.perform(put("/api/orders/{id}/assignment", order.getId()).with(as(user))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"servicerId": %d, "version": %d}
+                        """.formatted(servicerId, order.getVersion())));
     }
 
     private String numberAfterSubmit(Order draft) throws Exception {

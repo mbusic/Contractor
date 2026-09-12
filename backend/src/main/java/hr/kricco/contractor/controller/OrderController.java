@@ -1,5 +1,6 @@
 package hr.kricco.contractor.controller;
 
+import hr.kricco.contractor.dto.AssignmentRequest;
 import hr.kricco.contractor.dto.OrderDto;
 import hr.kricco.contractor.dto.OrderRequest;
 import hr.kricco.contractor.dto.OrderSummaryDto;
@@ -71,5 +72,19 @@ public class OrderController {
     public OrderDto changeStatus(@PathVariable Long id, @Valid @RequestBody StatusChangeRequest request,
                                  @AuthenticationPrincipal UserPrincipal principal) {
         return orderService.changeStatus(id, request.status(), request.version(), principal.getUser());
+    }
+
+    // A servicer takes an unassigned PENDING order. No body, so no version: @Version stops two servicers at once.
+    @PostMapping("/{id}/accept")
+    @PreAuthorize("hasRole('SERVICER')")
+    public OrderDto accept(@PathVariable Long id, @AuthenticationPrincipal UserPrincipal principal) {
+        return orderService.acceptOrder(id, principal.getUser());
+    }
+
+    @PutMapping("/{id}/assignment")
+    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE')")
+    public OrderDto assign(@PathVariable Long id, @Valid @RequestBody AssignmentRequest request,
+                           @AuthenticationPrincipal UserPrincipal principal) {
+        return orderService.assignServicer(id, request.servicerId(), request.version(), principal.getUser());
     }
 }

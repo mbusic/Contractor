@@ -25,7 +25,9 @@ import hr.kricco.contractor.repository.BranchRepository;
 import hr.kricco.contractor.repository.ClientRepository;
 import hr.kricco.contractor.repository.LocationRepository;
 import hr.kricco.contractor.repository.OrderRepository;
+import hr.kricco.contractor.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,10 +43,13 @@ public class OrderService {
     private static final Set<OrderStatus> SUBMITTED_STATUSES =
             Set.of(OrderStatus.PENDING, OrderStatus.IN_PROGRESS, OrderStatus.RESOLVED);
 
+    private static final String ALREADY_TAKEN = "Order is already taken or not pending";
+
     private final OrderRepository orderRepository;
     private final BranchRepository branchRepository;
     private final ClientRepository clientRepository;
     private final LocationRepository locationRepository;
+    private final UserRepository userRepository;
     private final StatusTransitionService statusTransitionService;
     private final OrderNumberGenerator orderNumberGenerator;
 
@@ -110,7 +115,56 @@ public class OrderService {
         return toDto(orderRepository.saveAndFlush(order), currentUser);
     }
 
-    // Every status change goes through here, also the ones from accept, assign and the portal (later slices)
+    // A servicer takes an unassigned PENDING order (first-line process)
+    @Transactional
+    public OrderDto acceptOrder(Long id, User currentUser) {
+        Order order = findOrder(id);
+        if (!isUnassignedPending(order)) {
+            throw new ConflictException(ALREADY_TAKEN);
+        }
+        order.setAssignedServicer(userRepository.getReferenceById(currentUser.getId()));
+        applyStatus(order, OrderStatus.IN_PROGRESS);
+        return toDto(saveAcceptedOrder(order), currentUser);
+    }
+
+    // Two servicers who accept at the same time both pass the check in acceptOrder.
+    // @Version lets only the first save through, and the second gets the same answer as if it came later.
+    private Order saveAcceptedOrder(Order order) {
+        try {
+            return orderRepository.saveAndFlush(order);
+        } catch (OptimisticLockingFailureException e) {
+            throw new ConflictException(ALREADY_TAKEN);
+        }
+    }
+
+    // The office assigns a servicer to a PENDING order (it becomes IN_PROGRESS) or reassigns an IN_PROGRESS one
+    @Transactional
+    public OrderDto assignServicer(Long id, Long servicerId, Long version, User currentUser) {
+        Order order = findOrder(id);
+        VersionCheck.check(version, order.getVersion());
+        User servicer = findActiveServicer(servicerId);
+        if (order.getStatus() == OrderStatus.PENDING) {
+            order.setAssignedServicer(servicer);
+            applyStatus(order, OrderStatus.IN_PROGRESS);
+        } else if (order.getStatus() == OrderStatus.IN_PROGRESS) {
+            order.setAssignedServicer(servicer);
+        } else {
+            throw new ConflictException("Only PENDING and IN_PROGRESS orders can be assigned");
+        }
+        return toDto(orderRepository.saveAndFlush(order), currentUser);
+    }
+
+    // For UserService, when a servicer is deactivated or gets another role. Their IN_PROGRESS orders go back
+    // to PENDING, which clears the servicer, so other servicers can accept them. Other statuses keep the servicer.
+    @Transactional
+    public void releaseOrdersOf(User servicer) {
+        List<Order> orders = orderRepository.findByAssignedServicerIdAndStatus(servicer.getId(), OrderStatus.IN_PROGRESS);
+        for (Order order : orders) {
+            applyStatus(order, OrderStatus.PENDING);
+        }
+    }
+
+    // Every status change goes through here, also the ones from accept, assign, releaseOrdersOf and the portal (later slice)
     void applyStatus(Order order, OrderStatus newStatus) {
         if (!statusTransitionService.isAllowed(order.getStatus(), newStatus)) {
             throw new ConflictException("Status change from " + order.getStatus() + " to " + newStatus + " is not allowed");
@@ -124,6 +178,10 @@ public class OrderService {
             if (order.getOrderNumber() == null) {
                 order.setOrderNumber(orderNumberGenerator.next());
             }
+        }
+        // PENDING means "waiting for a servicer", so a PENDING order never has one
+        if (newStatus == OrderStatus.PENDING) {
+            order.setAssignedServicer(null);
         }
         order.setStatus(newStatus);
     }
@@ -169,6 +227,19 @@ public class OrderService {
     private Order findOrder(Long id) {
         return orderRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Order not found"));
+    }
+
+    // The servicer comes from the body, so an unknown ID is a 400. A deactivated one can't log in to see the order.
+    private User findActiveServicer(Long servicerId) {
+        User user = userRepository.findById(servicerId)
+                .orElseThrow(() -> new BadRequestException("Servicer not found"));
+        if (user.getRole() != Role.SERVICER) {
+            throw new BadRequestException("User is not a servicer");
+        }
+        if (!user.isActive()) {
+            throw new BadRequestException("Servicer is not active");
+        }
+        return user;
     }
 
     // Full replace. Unknown IDs in the body are a 400, not a 404: the path itself is fine.

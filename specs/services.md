@@ -40,7 +40,7 @@ Rule: services don't know about HTTP. They never import `org.springframework.htt
 - First the usual lookup (404) and row check (403), then `VersionCheck.check(request.version(), entity.getVersion())`: null -> 400 "Version is required", different -> 409 "Changed by someone else. Reload and try again." Only then the other rules.
 - Save with `saveAndFlush`. Hibernate increases the version (and `updatedAt`) only on flush, and the response must show the new values.
 - If another transaction saves the same row between the check and the flush, Hibernate's `@Version` check fails and `ApiExceptionHandler` answers 409 with the same detail.
-- Accept has no request version: `@Version` alone stops two servicers from taking the same order.
+- Accept has no request version: `@Version` alone stops two servicers from taking the same order. `acceptOrder` catches that failure itself and answers with its own 409 (see OrderService "Accept").
 - Hibernate leaves `mappedBy` collections out of the version, so adding or removing a location doesn't change the client's version.
 
 ## Overview
@@ -88,6 +88,7 @@ Employee accounts:
 | `void deleteEmployee(Long id, User currentUser)` | Sets `active = false`, nothing is deleted (domain-model Q3) |
 
 - An unknown ID or a client user's ID -> 404 "Employee not found".
+- When a servicer stops being an active SERVICER (delete, `active: false`, or another role), `OrderService.releaseOrdersOf` sends their IN_PROGRESS orders back to PENDING, so other servicers can accept them.
 - Self-guard, so the last admin can't lock everyone out: an admin can't deactivate their own account (delete or `active: false`) or change their own role away from ADMIN -> 409.
 
 Client users:
@@ -132,8 +133,9 @@ For employees. Client users go through PortalService.
 | `OrderDto updateOrder(Long id, OrderRequest req, User currentUser)` | Version check, full replace of order data and estimated costs, in any status. For a submitted order, client and location stay required (400) |
 | `void deleteOrder(Long id)` | Deletes the order (with its notes and photos), then the photo files |
 | `OrderDto changeStatus(Long id, OrderStatus newStatus, Long version, User currentUser)` | Row check, version check, then `applyStatus` |
-| `OrderDto acceptOrder(Long id, User servicer)` | Servicer takes an unassigned PENDING order |
-| `OrderDto assignServicer(Long id, Long servicerId)` | Office assigns or reassigns |
+| `OrderDto acceptOrder(Long id, User currentUser)` | Servicer takes an unassigned PENDING order |
+| `OrderDto assignServicer(Long id, Long servicerId, Long version, User currentUser)` | Version check, then the office assigns or reassigns |
+| `void releaseOrdersOf(User servicer)` | For UserService. The servicer's IN_PROGRESS orders go through `applyStatus(PENDING)`, which unassigns them. DRAFT, RESOLVED and CANCELLED orders keep the servicer as history |
 | `OrderDto updateActualCosts(Long id, CostsRequest req, User currentUser)` | Row check, full replace of the actual cost fields |
 | `OrderDto addNote(Long id, String text, User currentUser)` | Row check. Author = currentUser |
 | `OrderDto addPhoto(Long id, MultipartFile file, User currentUser)` | Row check, then `storePhoto` |
@@ -144,13 +146,13 @@ Shared with PortalService (not exposed through REST directly):
 
 | Method | Does |
 |--------|------|
-| `void applyStatus(Order order, OrderStatus newStatus)` | 409 if StatusTransitionService doesn't allow it. 409 "Assign a servicer first" for IN_PROGRESS without a servicer. For a submitted status (PENDING, IN_PROGRESS, RESOLVED): 400 without client or location, and takes a number from OrderNumberGenerator if the order has none yet |
+| `void applyStatus(Order order, OrderStatus newStatus)` | 409 if StatusTransitionService doesn't allow it. 409 "Assign a servicer first" for IN_PROGRESS without a servicer. For a submitted status (PENDING, IN_PROGRESS, RESOLVED): 400 without client or location, and takes a number from OrderNumberGenerator if the order has none yet. A change to PENDING clears the servicer: a PENDING order never has one |
 | `void storePhoto(Order order, MultipartFile file)` | JPEG, PNG, GIF or WebP only (400 otherwise). Max 6 per order (400). Stores the file through FileStorageService |
 
 Rules:
 - **Row check** (`checkAccess`): ADMIN and OFFICE may touch every order. A SERVICER may read an order assigned to them or an unassigned PENDING one, and may change only orders assigned to them. Otherwise 403.
-- **Accept:** 409 "Order is already taken or not pending" unless the order is PENDING and unassigned. Then set the servicer and `applyStatus(IN_PROGRESS)`, and save with `saveAndFlush`. When two servicers accept at the same time, both pass the check, but only the first flush matches the version. The second gets the `@Version` 409 (see "Optimistic locking").
-- **Assign:** the user must be a SERVICER (400). PENDING: set the servicer, then `applyStatus(IN_PROGRESS)`. IN_PROGRESS: just change the servicer. Any other status: 409.
+- **Accept:** 409 "Order is already taken or not pending" unless the order is PENDING and unassigned. Then set the servicer and `applyStatus(IN_PROGRESS)`, and save with `saveAndFlush`. When two servicers accept at the same time, both pass the check, but only the first flush matches the version. The second gets the `@Version` failure, which `acceptOrder` turns into the same 409 "Order is already taken or not pending". `OrderAcceptRaceTest` forces this order of events with two threads.
+- **Assign:** `servicerId` must be an existing (400 "Servicer not found"), active (400 "Servicer is not active") SERVICER (400 "User is not a servicer"). PENDING: set the servicer, then `applyStatus(IN_PROGRESS)`. IN_PROGRESS: just change the servicer. Any other status: 409 "Only PENDING and IN_PROGRESS orders can be assigned".
 - **Location** must belong to the order's client (400), whenever it's set. A location without a client is refused too.
 - **Unknown IDs in the body** (branch, client, location) -> 400 "Xxx not found", not 404: the path itself exists.
 - **Lists** load branch, client, location and servicer with an `@EntityGraph`, so a row doesn't trigger four extra queries. Newest first, the ID breaks ties.
