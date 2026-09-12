@@ -10,9 +10,10 @@ import { BranchService } from '../../core/services/branch.service';
 import { ClientService } from '../../core/services/client.service';
 import { AuthService } from '../../core/services/auth.service';
 import {
-  BranchDto, ClientDto, CostsDto, CostsRequest, LocationDto, OrderDto, OrderRequest, OrderStatus, UserDto,
+  BranchDto, ClientDto, CostsDto, CostsRequest, DocumentType, LocationDto, OrderDto, OrderRequest, OrderStatus, UserDto,
 } from '../../core/models/models';
-import { ALL_URGENCIES, STATUS_LABELS, URGENCY_LABELS } from '../../core/labels';
+import { ALL_URGENCIES, DOCUMENT_LABELS, STATUS_LABELS, URGENCY_LABELS } from '../../core/labels';
+import { openDocument } from '../../core/documents';
 import { toApiError } from '../../core/errors';
 import { locationText } from '../../core/format';
 
@@ -275,6 +276,14 @@ const PHOTO_TYPES = 'image/jpeg,image/png,image/gif,image/webp';
           <button class="btn btn-outline btn-sm" (click)="addNote()" [disabled]="!newNote.trim()">Bilješke +</button>
         </div>
       </div>
+
+      <!-- Document buttons: the office gets all four, a servicer the work order of their own order -->
+      <div class="card" *ngIf="documentTypes().length > 0">
+        <h3>Ispis dokumenata</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <button class="btn btn-secondary btn-sm" *ngFor="let t of documentTypes()" (click)="openDoc(t)">{{ documentLabels[t] }}</button>
+        </div>
+      </div>
     </div>
 
     <div *ngIf="!order && !loading" style="color:#888;padding:24px">{{ error || 'Nalog nije pronađen.' }}</div>
@@ -314,6 +323,7 @@ export class OrderDetailComponent implements OnInit {
   urgencyLabels = URGENCY_LABELS;
   maxPhotos = MAX_PHOTOS;
   photoTypes = PHOTO_TYPES;
+  documentLabels = DOCUMENT_LABELS;
 
   isOffice = computed(() => this.auth.hasRole('OFFICE', 'ADMIN'));
   isServicer = computed(() => this.auth.hasRole('SERVICER'));
@@ -478,6 +488,20 @@ export class OrderDetailComponent implements OnInit {
   addNote() {
     if (!this.newNote.trim()) { return; }
     this.run(this.orderSvc.addNote(this.order!.id, this.newNote), () => this.newNote = '');
+  }
+
+  // Documents: the same rule as the backend
+
+  documentTypes(): DocumentType[] {
+    if (this.isOffice()) {
+      return ['QUOTE', 'WORK_ORDER', 'REPORT', 'INVOICE'];
+    }
+    return this.isAssignedToMe() ? ['WORK_ORDER'] : [];
+  }
+
+  openDoc(type: DocumentType) {
+    this.clearError();
+    openDocument(this.orderSvc.getDocument(this.order!.id, type), e => this.showError(e));
   }
 
   // Runs a change and shows the order from the response. done() runs only on success.

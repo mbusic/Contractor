@@ -325,6 +325,7 @@ class PortalEndpointsTest {
                         """),
                 multipart("/api/portal/orders/1/photos").file(new MockMultipartFile("file", "photo.jpg", "image/jpeg", JPEG)),
                 delete("/api/portal/orders/1/photos/1"),
+                get("/api/portal/orders/1/documents/QUOTE"),
                 get("/api/portal/locations"),
                 post("/api/portal/locations").contentType(MediaType.APPLICATION_JSON).content("""
                         {"address": "Obala 5", "city": "Split 21000"}

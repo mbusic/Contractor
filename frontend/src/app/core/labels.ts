@@ -1,4 +1,4 @@
-import { ClientType, OrderStatus, Role, Urgency } from './models/models';
+import { ClientType, DocumentType, OrderStatus, Role, Urgency } from './models/models';
 
 // Croatian labels for the enum values (specs/domain-model.md)
 
@@ -28,6 +28,13 @@ export const URGENCY_LABELS: Record<Urgency, string> = {
 export const CLIENT_TYPE_LABELS: Record<ClientType, string> = {
   COMPANY: 'Tvrtka',
   INDIVIDUAL: 'Fizička osoba',
+};
+
+export const DOCUMENT_LABELS: Record<DocumentType, string> = {
+  QUOTE: 'Ponuda',
+  WORK_ORDER: 'Radni nalog',
+  REPORT: 'Izvještaj o radovima',
+  INVOICE: 'Račun',
 };
 
 // For dropdowns, in the order of the enum

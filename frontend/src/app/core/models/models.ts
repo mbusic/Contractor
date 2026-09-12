@@ -6,6 +6,7 @@ export type Role = 'ADMIN' | 'OFFICE' | 'SERVICER' | 'CLIENT';
 export type ClientType = 'COMPANY' | 'INDIVIDUAL';
 export type OrderStatus = 'DRAFT' | 'PENDING' | 'IN_PROGRESS' | 'RESOLVED' | 'CANCELLED';
 export type Urgency = 'SAME_DAY' | 'ONE_DAY' | 'ONE_WEEK' | 'ONE_MONTH' | 'SIX_MONTHS';
+export type DocumentType = 'QUOTE' | 'WORK_ORDER' | 'REPORT' | 'INVOICE';
 
 // Errors: RFC 9457 Problem Details. fieldErrors only for a failed Bean Validation check.
 export interface ProblemDetail {

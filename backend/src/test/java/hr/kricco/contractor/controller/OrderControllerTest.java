@@ -740,7 +740,8 @@ class OrderControllerTest {
                         {"text": "Note"}
                         """),
                 multipart("/api/orders/1/photos").file(new MockMultipartFile("file", "photo.jpg", "image/jpeg", JPEG)),
-                delete("/api/orders/1/photos/1"));
+                delete("/api/orders/1/photos/1"),
+                get("/api/orders/1/documents/QUOTE"));
     }
 
     @ParameterizedTest

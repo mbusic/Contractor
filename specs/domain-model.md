@@ -287,6 +287,8 @@ Printable HTML documents made from an order (roadmap step 9), as in the template
 | REPORT     | Izvještaj o radovima | Order details, client, servicer, status, description, notes, actual costs, photos        |
 | INVOICE    | Račun                | Order details, order date, client, actual costs. The legal VAT/OIB data is a placeholder |
 
+- Who opens which document: ADMIN and OFFICE all 4. A SERVICER only the work order, and only of an order assigned to them (it's the sheet they fill in on site). A client user the quote, report and invoice of their own orders (Q5).
+- Any order status. A draft shows "Nacrt" instead of the order number; an invoice before the work is done shows empty actual costs.
 - Documents are not stored. The HTML is built from the current order data every time a document is opened, so a reopened quote shows the current estimates, not the ones it had when it was first printed.
 - The user gets a PDF through the browser's print to PDF. The backend doesn't generate PDFs.
 - Document templates = one fixed HTML layout per type, in code (DocumentService). There's no template entity.
@@ -302,7 +304,7 @@ Printable HTML documents made from an order (roadmap step 9), as in the template
 - **Q2 - Client.address.** Decided (slice 2): kept as an optional billing address for both client types, printed on the invoice. Work sites are Locations.
 - **Q3 - Deleting referenced rows.** The template hard-deletes clients, users and branches. That fails on the foreign key when orders or notes point to them. Block the delete (simplest), or add an "active" flag? Decided so far: branches - deleting a branch that still has users or orders is blocked with 409. Users - employees are deactivated instead of deleted, client users are deleted (see User). Clients - deleted together with their locations while nothing points to them, 409 while client users or orders do. A location used by an order can't be deleted either (409). Those checks are added by the slices that add the references.
 - **Q4 - When a draft gets its order number.** Decided (slice 4): when the order is submitted for the first time. Drafts have no number, so abandoned portal drafts don't use up numbers. An order that goes back to DRAFT and is submitted again keeps its number. Cancelled or deleted submitted orders still leave gaps.
-- **Q5 - Documents a client user can see.** All 4 types, or not the work order (it's an internal document for the servicer)?
+- **Q5 - Documents a client user can see.** Decided (step 9): quote, report and invoice. Not the work order, it's an internal sheet for the servicer.
 
 ## Changes from the template
 

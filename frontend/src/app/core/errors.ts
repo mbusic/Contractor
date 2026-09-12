@@ -55,6 +55,7 @@ const DETAIL_TEXTS: [RegExp, string][] = [
   [/^You can't remove your own admin role/, 'Ne možete sebi ukloniti ulogu administratora.'],
   [/^You can't change this order/, 'Ne možete mijenjati ovaj nalog.'],
   [/^You can't see this order/, 'Nemate pristup ovom nalogu.'],
+  [/^You can't open this document/, 'Ovaj dokument ne možete otvoriti.'],
   [/^Order not found/, 'Nalog nije pronađen.'],
   [/^Photo not found/, 'Fotografija nije pronađena.'],
   [/^Employee not found/, 'Djelatnik nije pronađen.'],
@@ -80,11 +81,21 @@ export function toApiError(error: HttpErrorResponse): ApiError {
   };
 }
 
+// A call made with responseType 'text' (the documents) gets the error body as a string
 function asProblem(body: unknown): ProblemDetail | null {
-  if (body && typeof body === 'object' && 'detail' in body) {
-    return body as ProblemDetail;
+  const parsed = typeof body === 'string' ? parseJson(body) : body;
+  if (parsed && typeof parsed === 'object' && 'detail' in parsed) {
+    return parsed as ProblemDetail;
   }
   return null;
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 function fieldErrorsOf(problem: ProblemDetail | null): Record<string, string> {

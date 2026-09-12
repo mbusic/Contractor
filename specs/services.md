@@ -145,7 +145,7 @@ Employee methods first, then the client portal methods (see "Client portal" belo
 | `OrderDto addNote(Long id, String text, User currentUser)` | Row check, any status. Author = currentUser. Added through `Order.notes` (cascade) and flushed, so the response has the note's ID and createdAt |
 | `OrderDto addPhoto(Long id, UploadedFile file, User currentUser)` | Row check, any status, then `storePhoto`. The controller copies the MultipartFile into `UploadedFile(originalName, contentType, content)`, so services stay free of Spring Web types |
 | `void deletePhoto(Long orderId, Long photoId, User currentUser)` | Row check [S6]. 404 "Photo not found" if the photo isn't on this order. Deletes the row, flushes, then deletes the file |
-| `String getDocument(Long id, DocumentType type, User currentUser)` | Row check [S4], then `DocumentService.render` |
+| `String getDocument(Long id, DocumentType type, User currentUser)` | ADMIN/OFFICE: every type. SERVICER: only `WORK_ORDER` of an order assigned to them, else 403 "You can't open this document" [S4]. Then `DocumentService.render` |
 
 Internal (private), used by several of the methods above:
 
@@ -174,7 +174,7 @@ Client portal (`/api/portal/orders`, CLIENT only) [S2]. Every method takes `User
 | `PortalOrderDto submitPortalOrder(Long id, Long version, User currentUser)` | Version check, only while DRAFT (409), then `applyStatus(PENDING)` |
 | `PortalOrderDto addPortalPhoto(Long id, UploadedFile file, User currentUser)` | Only while DRAFT, then `storePhoto` |
 | `void deletePortalPhoto(Long id, Long photoId, User currentUser)` | Only while DRAFT, then `removePhoto` |
-| `String getPortalDocument(Long id, DocumentType type, User currentUser)` | 403 if clients may not see this type (domain-model Q5), then `DocumentService.render`. Comes with roadmap step 9 |
+| `String getPortalDocument(Long id, DocumentType type, User currentUser)` | Visible order (403), then `WORK_ORDER` -> 403 "You can't open this document" (domain-model Q5), then `DocumentService.render` |
 
 ## StatusTransitionService
 
@@ -211,8 +211,10 @@ The rows come from `schema.sql` (see domain-model StatusTransition).
 - Access is checked by the caller (OrderService, employee or portal method) before `render`.
 - Runs inside the caller's read-only transaction, because the order's notes and photos load lazily.
 - The page has a "Ispis / PDF" button that calls `window.print()`. `@media print` hides the button. The user saves a PDF through the browser.
-- Photos are `<img>` tags with an absolute URL: `app.base-url` + `/api/files/{filename}`. That's why `/api/files/**` is public.
-- Every value from the database is HTML-escaped (Spring's `HtmlUtils.htmlEscape`) before it goes into the page. [S9]
+- Photos are `<img>` tags with an absolute URL: `app.base-url` + `/api/files/{filename}` (dev: `http://localhost:8080`). The frontend opens the page as a blob, where a relative URL doesn't work. That's why `/api/files/**` is public.
+- Every value from the database is HTML-escaped before it goes into the page (`& < > " '`, a small method in DocumentService - Spring's `HtmlUtils` is in `org.springframework.web`, which services don't import). [S9]
+- Dates are Croatian dates (`Europe/Zagreb`), whatever the server's time zone. Notes in the report run oldest first.
+- The controller sets `text/html; charset=UTF-8` on the response itself (not `produces` on the mapping), so errors still come back as Problem Details JSON. The frontend opens a new tab in the click, then loads the HTML into it as a blob, so a popup blocker doesn't stop it.
 - Dates: `dd.MM.yyyy`. Status and urgency use their Croatian labels from domain-model. Total hours are calculated (work hours x number of workers).
 
 ## FileStorageService

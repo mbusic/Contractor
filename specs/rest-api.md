@@ -128,7 +128,7 @@ Every endpoint checks the role through `@PreAuthorize` on its controller method 
 | POST   | `/api/orders/{id}/notes`               | employees              | NoteRequest        | OrderDto (201)         | In any status. SERVICER: only on orders assigned to them (403). No version: the note is a new row, the order doesn't change |
 | POST   | `/api/orders/{id}/photos`              | employees              | multipart `file`   | OrderDto (201)         | In any status. JPEG, PNG, GIF or WebP, max 10 MB (413). Max 6 per order (400). SERVICER: only on orders assigned to them (403). No version. See "Photos" below |
 | DELETE | `/api/orders/{id}/photos/{photoId}`    | employees              | -                  | 204                    | Deletes the row and the file. 404 if the photo isn't on this order. SERVICER: only on orders assigned to them [A9] |
-| GET    | `/api/orders/{id}/documents/{type}`    | ADMIN, OFFICE          | -                  | HTML page (`text/html`) | `{type}` = DocumentType value (`QUOTE`, `WORK_ORDER`, `REPORT`, `INVOICE`). Built from the current order data, not stored [A8] |
+| GET    | `/api/orders/{id}/documents/{type}`    | employees              | -                  | HTML page (`text/html`) | `{type}` = DocumentType value (`QUOTE`, `WORK_ORDER`, `REPORT`, `INVOICE`), 400 for another value. ADMIN and OFFICE: all 4. SERVICER: only `WORK_ORDER` of an order assigned to them (403 otherwise). Built from the current order data, not stored [A8] |
 
 - Documents: the frontend fetches the HTML with the JWT and opens it in a new tab as a blob, as in the template. The user prints it or saves it as PDF through the browser.
 - The servicer's list is one endpoint. The UI splits it into "my orders" and "available" by `assignedServicerId`.
@@ -158,7 +158,7 @@ For client users (role CLIENT). Everything is limited to the user's own client. 
 | POST   | `/api/portal/orders/{id}/submit`              | SubmitRequest      | PortalOrderDto              | DRAFT -> PENDING: version check, 409 if not a DRAFT, 400 without a location, takes the order number |
 | POST   | `/api/portal/orders/{id}/photos`              | multipart `file`   | PortalOrderDto (201)        | Only while DRAFT. Same rules as the employee upload (types, 10 MB, max 6) |
 | DELETE | `/api/portal/orders/{id}/photos/{photoId}`    | -                  | 204                         | Only while DRAFT. 404 if the photo isn't on this order |
-| GET    | `/api/portal/orders/{id}/documents/{type}`    | -                  | HTML page (`text/html`)     | Only the types clients may see (domain-model Q5), else 403. Not built yet: comes with the document views (roadmap step 9) |
+| GET    | `/api/portal/orders/{id}/documents/{type}`    | -                  | HTML page (`text/html`)     | `QUOTE`, `REPORT`, `INVOICE`. `WORK_ORDER` is 403 (domain-model Q5) |
 | GET    | `/api/portal/locations`                       | -                  | List<LocationDto>           | Locations of the user's client |
 | POST   | `/api/portal/locations`                       | LocationRequest    | LocationDto (201)           | New work site, for an order at a new address |
 
@@ -237,6 +237,4 @@ Requests end in `Request`, responses in `Dto`. "?" = optional.
 
 ## Decisions to confirm
 
-My choices in this document that nobody has confirmed yet:
-
-- Documents for employees: ADMIN and OFFICE only, as in the template (it shows the document buttons only to the office). Servicers can't open them.
+None open. The last one (documents for employees) was decided in step 9: ADMIN and OFFICE open all 4, a SERVICER the work order of their own orders.

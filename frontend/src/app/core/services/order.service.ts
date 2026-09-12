@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { API_URL } from '../api';
 import {
   CostsRequest,
+  DocumentType,
   OrderDto,
   OrderRequest,
   OrderStatus,
@@ -14,7 +15,6 @@ import {
 
 // Orders for employees (/api/orders) and for client users in the portal (/api/portal/orders).
 // Writes that change the order send the version it was read with, else the backend answers 409.
-// The document endpoints come with the document views (roadmap step 9).
 @Injectable({ providedIn: 'root' })
 export class OrderService {
   constructor(private http: HttpClient) {}
@@ -70,6 +70,11 @@ export class OrderService {
     return this.http.delete<void>(`${API_URL}/orders/${id}/photos/${photoId}`);
   }
 
+  // A whole HTML page. ADMIN and OFFICE: every type, a SERVICER only the work order of their own order.
+  getDocument(id: number, type: DocumentType) {
+    return this.http.get(`${API_URL}/orders/${id}/documents/${type}`, { responseType: 'text' });
+  }
+
   // Client portal: only the client's own orders, changes only while DRAFT
 
   getPortalOrders() {
@@ -98,6 +103,11 @@ export class OrderService {
 
   deletePortalPhoto(id: number, photoId: number) {
     return this.http.delete<void>(`${API_URL}/portal/orders/${id}/photos/${photoId}`);
+  }
+
+  // Every type except the work order
+  getPortalDocument(id: number, type: DocumentType) {
+    return this.http.get(`${API_URL}/portal/orders/${id}/documents/${type}`, { responseType: 'text' });
   }
 }
 

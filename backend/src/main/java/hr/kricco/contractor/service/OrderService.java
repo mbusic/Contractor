@@ -18,6 +18,7 @@ import hr.kricco.contractor.dto.UploadedFile;
 import hr.kricco.contractor.entity.Branch;
 import hr.kricco.contractor.entity.Client;
 import hr.kricco.contractor.entity.Costs;
+import hr.kricco.contractor.entity.DocumentType;
 import hr.kricco.contractor.entity.Location;
 import hr.kricco.contractor.entity.Order;
 import hr.kricco.contractor.entity.OrderNote;
@@ -56,6 +57,8 @@ public class OrderService {
 
     private static final int MAX_PHOTOS = 6;
 
+    private static final String CANT_OPEN_DOCUMENT = "You can't open this document";
+
     private final OrderRepository orderRepository;
     private final BranchRepository branchRepository;
     private final ClientRepository clientRepository;
@@ -64,6 +67,7 @@ public class OrderService {
     private final StatusTransitionService statusTransitionService;
     private final OrderNumberGenerator orderNumberGenerator;
     private final FileStorageService fileStorageService;
+    private final DocumentService documentService;
 
     // ADMIN and OFFICE: all orders. SERVICER: assigned to them + all unassigned PENDING. Newest first.
     @Transactional(readOnly = true)
@@ -257,6 +261,18 @@ public class OrderService {
                 .orElseThrow(() -> new BadRequestException("The file is not a valid JPEG, PNG, GIF or WebP image"));
     }
 
+    // ADMIN and OFFICE: every type. A SERVICER: only the work order, and only of an order assigned to them,
+    // since it's the sheet they fill in on site. Any status: a draft prints "Nacrt" instead of a number.
+    @Transactional(readOnly = true)
+    public String getDocument(Long id, DocumentType type, User currentUser) {
+        Order order = findOrder(id);
+        boolean servicerWorkOrder = type == DocumentType.WORK_ORDER && isAssignedTo(order, currentUser);
+        if (!isAdminOrOffice(currentUser) && !servicerWorkOrder) {
+            throw new ForbiddenException(CANT_OPEN_DOCUMENT);
+        }
+        return documentService.render(order, type);
+    }
+
     // For UserService, when a servicer is deactivated or gets another role. Their IN_PROGRESS orders go back
     // to PENDING, which clears the servicer, so other servicers can accept them. Other statuses keep the servicer.
     @Transactional
@@ -326,6 +342,16 @@ public class OrderService {
         Order order = findPortalOrder(id, currentUser);
         checkDraft(order);
         removePhoto(order, photoId);
+    }
+
+    // Every type except the work order: that one is the servicer's internal sheet (domain-model Q5)
+    @Transactional(readOnly = true)
+    public String getPortalDocument(Long id, DocumentType type, User currentUser) {
+        Order order = findPortalOrder(id, currentUser);
+        if (type == DocumentType.WORK_ORDER) {
+            throw new ForbiddenException(CANT_OPEN_DOCUMENT);
+        }
+        return documentService.render(order, type);
     }
 
     // The user comes from a finished transaction: only the ID of its client proxy can be read

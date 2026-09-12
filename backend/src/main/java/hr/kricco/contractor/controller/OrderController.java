@@ -12,12 +12,14 @@ import hr.kricco.contractor.dto.PortalOrderSummaryDto;
 import hr.kricco.contractor.dto.StatusChangeRequest;
 import hr.kricco.contractor.dto.SubmitRequest;
 import hr.kricco.contractor.dto.UploadedFile;
+import hr.kricco.contractor.entity.DocumentType;
 import hr.kricco.contractor.security.UserPrincipal;
 import hr.kricco.contractor.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -34,6 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 // Orders. Employees use /api/orders, client users the portal paths /api/portal/orders.
@@ -135,8 +138,16 @@ public class OrderController {
         orderService.deletePhoto(id, photoId, principal.getUser());
     }
 
-    // Client portal: only CLIENT users, with their own request and response shapes (rest-api.md [A2]).
-    // The document endpoint comes with the document views (roadmap step 9).
+    // A whole HTML page, opened by the frontend in a new tab. ADMIN and OFFICE: every type,
+    // a SERVICER only the work order of their own order (checked in OrderService).
+    @GetMapping("/orders/{id}/documents/{type}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE', 'SERVICER')")
+    public ResponseEntity<String> getDocument(@PathVariable Long id, @PathVariable DocumentType type,
+                                              @AuthenticationPrincipal UserPrincipal principal) {
+        return html(orderService.getDocument(id, type, principal.getUser()));
+    }
+
+    // Client portal: only CLIENT users, with their own request and response shapes (rest-api.md [A2])
 
     @GetMapping("/portal/orders")
     @PreAuthorize("hasRole('CLIENT')")
@@ -187,5 +198,20 @@ public class OrderController {
     public void deletePortalPhoto(@PathVariable Long id, @PathVariable Long photoId,
                                   @AuthenticationPrincipal UserPrincipal principal) {
         orderService.deletePortalPhoto(id, photoId, principal.getUser());
+    }
+
+    // Every type except the work order (checked in OrderService)
+    @GetMapping("/portal/orders/{id}/documents/{type}")
+    @PreAuthorize("hasRole('CLIENT')")
+    public ResponseEntity<String> getPortalDocument(@PathVariable Long id, @PathVariable DocumentType type,
+                                                    @AuthenticationPrincipal UserPrincipal principal) {
+        return html(orderService.getPortalDocument(id, type, principal.getUser()));
+    }
+
+    // Content-Type set per response and not with "produces" on the mapping, so errors can still be Problem Details JSON
+    private static ResponseEntity<String> html(String page) {
+        return ResponseEntity.ok()
+                .contentType(new MediaType(MediaType.TEXT_HTML, StandardCharsets.UTF_8))
+                .body(page);
     }
 }

@@ -6,8 +6,9 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Observable } from 'rxjs';
 import { OrderService } from '../../core/services/order.service';
 import { ClientService } from '../../core/services/client.service';
-import { LocationDto, OrderStatus, PortalOrderDto, PortalOrderRequest } from '../../core/models/models';
-import { ALL_URGENCIES, STATUS_LABELS, URGENCY_LABELS } from '../../core/labels';
+import { DocumentType, LocationDto, OrderStatus, PortalOrderDto, PortalOrderRequest } from '../../core/models/models';
+import { ALL_URGENCIES, DOCUMENT_LABELS, STATUS_LABELS, URGENCY_LABELS } from '../../core/labels';
+import { openDocument } from '../../core/documents';
 import { toApiError } from '../../core/errors';
 import { locationText } from '../../core/format';
 
@@ -129,6 +130,14 @@ const PHOTO_TYPES = 'image/jpeg,image/png,image/gif,image/webp';
           <span class="muted" style="font-size:.78rem;align-self:center">JPEG, PNG, GIF ili WebP, najviše 10 MB</span>
         </div>
       </div>
+
+      <!-- Documents: every type except the work order, which is the servicer's internal sheet -->
+      <div class="card">
+        <h3>Ispis dokumenata</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <button class="btn btn-secondary btn-sm" *ngFor="let t of documentTypes" (click)="openDoc(t)">{{ documentLabels[t] }}</button>
+        </div>
+      </div>
     </div>
 
     <div *ngIf="!order && !loading" style="color:#888;padding:24px">{{ error || 'Nalog nije pronađen.' }}</div>
@@ -156,6 +165,8 @@ export class PortalOrderDetailComponent implements OnInit {
   urgencyLabels = URGENCY_LABELS;
   maxPhotos = MAX_PHOTOS;
   photoTypes = PHOTO_TYPES;
+  documentTypes: DocumentType[] = ['QUOTE', 'REPORT', 'INVOICE'];
+  documentLabels = DOCUMENT_LABELS;
 
   constructor(
     private route: ActivatedRoute,
@@ -224,6 +235,11 @@ export class PortalOrderDetailComponent implements OnInit {
       next: () => this.reload(),
       error: e => this.showError(e),
     });
+  }
+
+  openDoc(type: DocumentType) {
+    this.clearError();
+    openDocument(this.orderSvc.getPortalDocument(this.order!.id, type), e => this.showError(e));
   }
 
   // Runs a change and shows the order from the response. done() runs only on success.
