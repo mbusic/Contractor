@@ -51,8 +51,9 @@ public class ClientService {
     @Transactional
     public ClientDto update(Long id, ClientRequest request) {
         Client client = findClient(id);
+        VersionCheck.check(request.version(), client.getVersion());
         copyRequestFields(request, client);
-        return toDto(clientRepository.save(client));
+        return toDto(clientRepository.saveAndFlush(client));
     }
 
     // Its locations are deleted with it (cascade). Blocked while users or orders point to the client (domain-model Q3).
@@ -81,8 +82,9 @@ public class ClientService {
     @Transactional
     public LocationDto updateLocation(Long clientId, Long locationId, LocationRequest request) {
         Location location = findLocation(clientId, locationId);
+        VersionCheck.check(request.version(), location.getVersion());
         copyRequestFields(request, location);
-        return toDto(locationRepository.save(location));
+        return toDto(locationRepository.saveAndFlush(location));
     }
 
     // Removed through the client's list, so orphan removal deletes it.
@@ -129,10 +131,11 @@ public class ClientService {
                 .toList();
         return new ClientDto(
                 client.getId(), client.getType(), client.getName(), client.getContactPerson(),
-                client.getPhone(), client.getEmail(), client.getAddress(), locations);
+                client.getPhone(), client.getEmail(), client.getAddress(), locations, client.getVersion());
     }
 
     private LocationDto toDto(Location location) {
-        return new LocationDto(location.getId(), location.getName(), location.getAddress(), location.getCity());
+        return new LocationDto(
+                location.getId(), location.getName(), location.getAddress(), location.getCity(), location.getVersion());
     }
 }

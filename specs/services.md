@@ -30,7 +30,18 @@ Rule: services don't know about HTTP. They never import `org.springframework.htt
 - The 500 catch-all only sees exceptions from controllers and services. Errors before Spring MVC (in a filter, or a URL the firewall rejects) go through Tomcat's forward to `/error` and get Spring Boot's default error body.
 
 - A new kind of error gets a new exception class and a handler method, added by the slice that needs it first.
+- `OptimisticLockingFailureException` (Spring's wrapper for the Hibernate `@Version` failure) -> 409 with the same detail as a stale version from `VersionCheck` (see "Optimistic locking").
 - No generic exception with a status field. It would bring HTTP back into the services.
+
+## Optimistic locking
+
+[S11] Every editable entity (Branch, Client, Location, User, Order) has a `@Version` field. Rules for update methods:
+
+- First the usual lookup (404) and row check (403), then `VersionCheck.check(request.version(), entity.getVersion())`: null -> 400 "Version is required", different -> 409 "Changed by someone else. Reload and try again." Only then the other rules.
+- Save with `saveAndFlush`. Hibernate increases the version (and `updatedAt`) only on flush, and the response must show the new values.
+- If another transaction saves the same row between the check and the flush, Hibernate's `@Version` check fails and `ApiExceptionHandler` answers 409 with the same detail.
+- Accept has no request version: `@Version` alone stops two servicers from taking the same order.
+- Hibernate leaves `mappedBy` collections out of the version, so adding or removing a location doesn't change the client's version.
 
 ## Overview
 
@@ -60,7 +71,7 @@ Rule: services don't know about HTTP. They never import `org.springframework.htt
 | `List<BranchDto> getAll()` | All branches |
 | `BranchDto getById(Long id)` | 404 if missing |
 | `BranchDto create(BranchRequest req)` | |
-| `BranchDto update(Long id, BranchRequest req)` | Full replace |
+| `BranchDto update(Long id, BranchRequest req)` | Version check, full replace |
 | `void delete(Long id)` | 409 "Branch has users" / "Branch has orders" while users or orders point to it (domain-model Q3) |
 
 This is the roadmap step 1 reference slice, so it's the pattern for the other services.
@@ -73,7 +84,7 @@ Employee accounts:
 |--------|------|
 | `List<UserDto> getEmployees(Role role)` | All employees, active and deactivated, sorted by displayName. Only one role if `role` isn't null (400 for CLIENT) |
 | `UserDto createEmployee(EmployeeRequest req)` | Role must be ADMIN, OFFICE or SERVICER (400 otherwise). Password required (400) |
-| `UserDto updateEmployee(Long id, EmployeeRequest req, User currentUser)` | Full replace, except an empty password keeps the current one. `active` can reactivate |
+| `UserDto updateEmployee(Long id, EmployeeRequest req, User currentUser)` | Version check, full replace, except an empty password keeps the current one. `active` can reactivate |
 | `void deleteEmployee(Long id, User currentUser)` | Sets `active = false`, nothing is deleted (domain-model Q3) |
 
 - An unknown ID or a client user's ID -> 404 "Employee not found".
@@ -85,7 +96,7 @@ Client users:
 |--------|------|
 | `List<UserDto> getClientUsers(Long clientId)` | Sorted by displayName. 404 for an unknown client |
 | `UserDto createClientUser(Long clientId, ClientUserRequest req)` | Role is always CLIENT, client is set from the path, no branch. Password required (400) |
-| `UserDto updateClientUser(Long clientId, Long userId, ClientUserRequest req)` | 404 if the user doesn't belong to that client. Empty password keeps the current one |
+| `UserDto updateClientUser(Long clientId, Long userId, ClientUserRequest req)` | 404 if the user doesn't belong to that client. Version check. Empty password keeps the current one |
 | `void deleteClientUser(Long clientId, Long userId)` | Same check. Deletes the row - nothing points to a client user |
 
 Rules:
@@ -100,11 +111,11 @@ Rules:
 | `List<ClientDto> getAll()` | With locations |
 | `ClientDto getById(Long id)` | |
 | `ClientDto create(ClientRequest req)` | |
-| `ClientDto update(Long id, ClientRequest req)` | Full replace |
+| `ClientDto update(Long id, ClientRequest req)` | Version check, full replace |
 | `void delete(Long id)` | Locations are deleted with it (cascade). 409 "Client has users" / "Client has orders" while client users or orders point to it (domain-model Q3) |
 | `List<LocationDto> getLocations(Long clientId)` | Used by the portal (slice 9) |
 | `LocationDto addLocation(Long clientId, LocationRequest req)` | |
-| `LocationDto updateLocation(Long clientId, Long locationId, LocationRequest req)` | [S5]. 404 if the location belongs to another client |
+| `LocationDto updateLocation(Long clientId, Long locationId, LocationRequest req)` | [S5]. 404 if the location belongs to another client. Version check |
 | `void deleteLocation(Long clientId, Long locationId)` | 404 if the location belongs to another client (the template gives 400). 409 "Location is used by orders". Removed through `client.getLocations()`, so orphan removal deletes it |
 
 - Clients sorted by name, locations by ID (the order they were added).
@@ -118,9 +129,9 @@ For employees. Client users go through PortalService.
 | `List<OrderSummaryDto> getOrders(User currentUser)` | ADMIN/OFFICE: all. SERVICER: assigned to them + unassigned PENDING. Newest first |
 | `OrderDto getOrder(Long id, User currentUser)` | Row check. Fills `allowedNextStatuses` from StatusTransitionService (empty if the user may not change the order, without IN_PROGRESS if no servicer is assigned), and calculates total hours and `costDifference` |
 | `OrderDto createOrder(OrderRequest req, User currentUser)` | New DRAFT without a number. `currentUser` is only used for `allowedNextStatuses` in the response |
-| `OrderDto updateOrder(Long id, OrderRequest req, User currentUser)` | Full replace of order data and estimated costs, in any status. For a submitted order, client and location stay required (400) |
+| `OrderDto updateOrder(Long id, OrderRequest req, User currentUser)` | Version check, full replace of order data and estimated costs, in any status. For a submitted order, client and location stay required (400) |
 | `void deleteOrder(Long id)` | Deletes the order (with its notes and photos), then the photo files |
-| `OrderDto changeStatus(Long id, OrderStatus newStatus, User currentUser)` | Row check, then `applyStatus` |
+| `OrderDto changeStatus(Long id, OrderStatus newStatus, Long version, User currentUser)` | Row check, version check, then `applyStatus` |
 | `OrderDto acceptOrder(Long id, User servicer)` | Servicer takes an unassigned PENDING order |
 | `OrderDto assignServicer(Long id, Long servicerId)` | Office assigns or reassigns |
 | `OrderDto updateActualCosts(Long id, CostsRequest req, User currentUser)` | Row check, full replace of the actual cost fields |
@@ -138,9 +149,7 @@ Shared with PortalService (not exposed through REST directly):
 
 Rules:
 - **Row check** (`checkAccess`): ADMIN and OFFICE may touch every order. A SERVICER may read an order assigned to them or an unassigned PENDING one, and may change only orders assigned to them. Otherwise 403.
-- **Accept:** one conditional update, so two servicers can't take the same order:
-  `UPDATE orders SET assigned_servicer_id = :me, status = 'IN_PROGRESS' WHERE id = :id AND assigned_servicer_id IS NULL AND status = 'PENDING'`.
-  If 0 rows change -> 409 "Order is already taken or not pending". PENDING -> IN_PROGRESS must also be allowed by StatusTransition (it always is).
+- **Accept:** 409 "Order is already taken or not pending" unless the order is PENDING and unassigned. Then set the servicer and `applyStatus(IN_PROGRESS)`, and save with `saveAndFlush`. When two servicers accept at the same time, both pass the check, but only the first flush matches the version. The second gets the `@Version` 409 (see "Optimistic locking").
 - **Assign:** the user must be a SERVICER (400). PENDING: set the servicer, then `applyStatus(IN_PROGRESS)`. IN_PROGRESS: just change the servicer. Any other status: 409.
 - **Location** must belong to the order's client (400), whenever it's set. A location without a client is refused too.
 - **Unknown IDs in the body** (branch, client, location) -> 400 "Xxx not found", not 404: the path itself exists.
@@ -238,3 +247,4 @@ Not services, but the auth steps (roadmap steps 3-5) need them. The same classes
 | S8 | No method security | `@EnableMethodSecurity` + `@PreAuthorize` on controllers |
 | S9 | Document HTML puts database values in as they are | Values are HTML-escaped. Otherwise a description like `<script>...</script>` would run in the document tab, which the frontend opens as a blob with the app's origin, so the script could read the app's data |
 | S10 | Services and controllers throw `ResponseStatusException` | Services throw exceptions from the `exception` package, and `ApiExceptionHandler` maps them to HTTP. Services stay free of HTTP types |
+| S11 | No versions, the last save wins | `@Version` on every editable entity, requests send the version back (see "Optimistic locking") |

@@ -151,13 +151,29 @@ class ClientControllerTest {
         mockMvc.perform(put("/api/clients/{id}", client.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"type": "INDIVIDUAL", "name": "Ana Anić Horvat"}
+                                {"type": "INDIVIDUAL", "name": "Ana Anić Horvat", "version": 0}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.type").value("INDIVIDUAL"))
                 .andExpect(jsonPath("$.name").value("Ana Anić Horvat"))
                 .andExpect(jsonPath("$.contactPerson").value(nullValue()))
-                .andExpect(jsonPath("$.locations.length()").value(1));
+                .andExpect(jsonPath("$.locations.length()").value(1))
+                .andExpect(jsonPath("$.version").value(1));
+    }
+
+    @Test
+    void updateWithStaleVersionReturnsConflict() throws Exception {
+        Client client = saveClient("Ana Anić");
+        client.setPhone("Saved by someone else");
+        clientRepository.saveAndFlush(client);
+
+        mockMvc.perform(put("/api/clients/{id}", client.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type": "INDIVIDUAL", "name": "Ana Anić Horvat", "version": 0}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Changed by someone else. Reload and try again."));
     }
 
     @Test
@@ -253,10 +269,29 @@ class ClientControllerTest {
 
         mockMvc.perform(put("/api/clients/{id}/locations/{locationId}", client.getId(), location.getId())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(LOCATION_JSON))
+                        .content("""
+                                {"name": "Skladište", "address": "Vukovarska 18", "city": "Split 21000", "version": 0}
+                                """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Skladište"))
-                .andExpect(jsonPath("$.address").value("Vukovarska 18"));
+                .andExpect(jsonPath("$.address").value("Vukovarska 18"))
+                .andExpect(jsonPath("$.version").value(1));
+    }
+
+    @Test
+    void updateLocationWithStaleVersionReturnsConflict() throws Exception {
+        Client client = saveClient("Petar Perić d.o.o.", "A.G. Matoša 42");
+        Location location = client.getLocations().getFirst();
+        location.setName("Saved by someone else");
+        locationRepository.saveAndFlush(location);
+
+        mockMvc.perform(put("/api/clients/{id}/locations/{locationId}", client.getId(), location.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "Skladište", "address": "Vukovarska 18", "city": "Split 21000", "version": 0}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Changed by someone else. Reload and try again."));
     }
 
     @Test
@@ -381,14 +416,31 @@ class ClientControllerTest {
         mockMvc.perform(put("/api/clients/{id}/users/{userId}", client.getId(), user.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"username": "petar2", "password": "", "displayName": "Petar P."}
+                                {"username": "petar2", "password": "", "displayName": "Petar P.", "version": 0}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("petar2"))
                 .andExpect(jsonPath("$.displayName").value("Petar P."))
-                .andExpect(jsonPath("$.role").value("CLIENT"));
+                .andExpect(jsonPath("$.role").value("CLIENT"))
+                .andExpect(jsonPath("$.version").value(1));
 
         assertThat(userRepository.findById(user.getId()).orElseThrow().getPassword()).isEqualTo(oldHash);
+    }
+
+    @Test
+    void updateUserWithStaleVersionReturnsConflict() throws Exception {
+        Client client = saveClient("Petar Perić d.o.o.");
+        User user = saveClientUser(client, "petar");
+        user.setDisplayName("Saved by someone else");
+        userRepository.saveAndFlush(user);
+
+        mockMvc.perform(put("/api/clients/{id}/users/{userId}", client.getId(), user.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username": "petar2", "password": "", "displayName": "Petar P.", "version": 0}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Changed by someone else. Reload and try again."));
     }
 
     @Test

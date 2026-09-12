@@ -84,11 +84,12 @@ public class OrderService {
     @Transactional
     public OrderDto updateOrder(Long id, OrderRequest request, User currentUser) {
         Order order = findOrder(id);
+        VersionCheck.check(request.version(), order.getVersion());
         copyRequestFields(request, order);
         if (SUBMITTED_STATUSES.contains(order.getStatus())) {
             checkSubmittedFields(order);
         }
-        return toDto(orderRepository.save(order), currentUser);
+        return toDto(orderRepository.saveAndFlush(order), currentUser);
     }
 
     // In any status. Notes and photos are deleted with it once they exist.
@@ -99,13 +100,14 @@ public class OrderService {
     }
 
     @Transactional
-    public OrderDto changeStatus(Long id, OrderStatus newStatus, User currentUser) {
+    public OrderDto changeStatus(Long id, OrderStatus newStatus, Long version, User currentUser) {
         Order order = findOrder(id);
         if (!canChange(order, currentUser)) {
             throw new ForbiddenException("You can't change this order");
         }
+        VersionCheck.check(version, order.getVersion());
         applyStatus(order, newStatus);
-        return toDto(orderRepository.save(order), currentUser);
+        return toDto(orderRepository.saveAndFlush(order), currentUser);
     }
 
     // Every status change goes through here, also the ones from accept, assign and the portal (later slices)
@@ -264,7 +266,8 @@ public class OrderService {
                 toServicerDto(order.getAssignedServicer()),
                 toCostsDto(order.getEstimatedCosts()),
                 order.getCreatedAt(),
-                order.getUpdatedAt());
+                order.getUpdatedAt(),
+                order.getVersion());
     }
 
     // The choices the UI shows. Empty if the user may not change the order.
@@ -290,7 +293,7 @@ public class OrderService {
         if (branch == null) {
             return null;
         }
-        return new BranchDto(branch.getId(), branch.getName(), branch.getCity());
+        return new BranchDto(branch.getId(), branch.getName(), branch.getCity(), branch.getVersion());
     }
 
     private ClientSummaryDto toClientDto(Client client) {
@@ -304,7 +307,8 @@ public class OrderService {
         if (location == null) {
             return null;
         }
-        return new LocationDto(location.getId(), location.getName(), location.getAddress(), location.getCity());
+        return new LocationDto(
+                location.getId(), location.getName(), location.getAddress(), location.getCity(), location.getVersion());
     }
 
     private ServicerDto toServicerDto(User servicer) {

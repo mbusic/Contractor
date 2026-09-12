@@ -4,6 +4,7 @@ public record LocationDto(
         Long id,
         String name,
         String address,
-        String city
+        String city,
+        Long version
 ) {
 }

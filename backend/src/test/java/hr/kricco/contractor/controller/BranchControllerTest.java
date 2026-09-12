@@ -113,11 +113,43 @@ class BranchControllerTest {
         mockMvc.perform(put("/api/branches/{id}", branch.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name": "Kricco Zadar 2"}
+                                {"name": "Kricco Zadar 2", "version": 0}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Kricco Zadar 2"))
-                .andExpect(jsonPath("$.city").value(nullValue()));
+                .andExpect(jsonPath("$.city").value(nullValue()))
+                .andExpect(jsonPath("$.version").value(1));
+    }
+
+    // Version handling is shared by every update (VersionCheck), so the missing version is tested only here
+    @Test
+    void updateWithoutVersionReturnsBadRequest() throws Exception {
+        Branch branch = saveBranch("Kricco Zadar", "Zadar");
+
+        mockMvc.perform(put("/api/branches/{id}", branch.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "Kricco Zadar 2"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Version is required"));
+    }
+
+    @Test
+    void updateWithStaleVersionReturnsConflict() throws Exception {
+        Branch branch = saveBranch("Kricco Zadar", "Zadar");
+        branch.setCity("Saved by someone else");
+        branchRepository.saveAndFlush(branch);
+
+        mockMvc.perform(put("/api/branches/{id}", branch.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "Kricco Zadar 2", "version": 0}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Changed by someone else. Reload and try again."));
+
+        assertThat(branchRepository.findById(branch.getId()).orElseThrow().getName()).isEqualTo("Kricco Zadar");
     }
 
     @Test

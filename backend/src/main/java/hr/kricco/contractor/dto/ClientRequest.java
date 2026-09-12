@@ -6,13 +6,15 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
-// Locations are not part of it, they have their own endpoints
+// Locations are not part of it, they have their own endpoints.
+// version: ignored on create, required on update (checked in the service, so one record serves both)
 public record ClientRequest(
         @NotNull ClientType type,
         @NotBlank @Size(max = 255) String name,
         @Size(max = 255) String contactPerson,
         @Size(max = 255) String phone,
         @Email @Size(max = 255) String email,
-        @Size(max = 255) String address
+        @Size(max = 255) String address,
+        Long version
 ) {
 }

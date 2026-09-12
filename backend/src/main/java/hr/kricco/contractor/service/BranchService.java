@@ -45,8 +45,9 @@ public class BranchService {
     @Transactional
     public BranchDto update(Long id, BranchRequest request) {
         Branch branch = findBranch(id);
+        VersionCheck.check(request.version(), branch.getVersion());
         copyRequestFields(request, branch);
-        return toDto(branchRepository.save(branch));
+        return toDto(branchRepository.saveAndFlush(branch));
     }
 
     @Transactional
@@ -74,6 +75,6 @@ public class BranchService {
     }
 
     private BranchDto toDto(Branch branch) {
-        return new BranchDto(branch.getId(), branch.getName(), branch.getCity());
+        return new BranchDto(branch.getId(), branch.getName(), branch.getCity(), branch.getVersion());
     }
 }

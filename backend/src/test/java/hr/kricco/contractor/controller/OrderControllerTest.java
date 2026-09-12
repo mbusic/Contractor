@@ -245,12 +245,13 @@ class OrderControllerTest {
         mockMvc.perform(put("/api/orders/{id}", order.getId()).with(as(office))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"contactPerson": "Marko"}
+                                {"contactPerson": "Marko", "version": 0}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.contactPerson").value("Marko"))
                 .andExpect(jsonPath("$.description").value(nullValue()))
-                .andExpect(jsonPath("$.client").value(nullValue()));
+                .andExpect(jsonPath("$.client").value(nullValue()))
+                .andExpect(jsonPath("$.version").value(1));
     }
 
     @Test
@@ -259,9 +260,26 @@ class OrderControllerTest {
 
         mockMvc.perform(put("/api/orders/{id}", order.getId()).with(as(office))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("""
+                                {"version": 0}
+                                """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value("Client is required"));
+    }
+
+    @Test
+    void updateWithStaleVersionReturnsConflict() throws Exception {
+        Order order = saveOrder(OrderStatus.DRAFT, null);
+        order.setDescription("Saved by someone else");
+        orderRepository.saveAndFlush(order);
+
+        mockMvc.perform(put("/api/orders/{id}", order.getId()).with(as(office))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"contactPerson": "Marko", "version": 0}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Changed by someone else. Reload and try again."));
     }
 
     // Delete
@@ -351,6 +369,33 @@ class OrderControllerTest {
     }
 
     @Test
+    void changeStatusWithStaleVersionReturnsConflict() throws Exception {
+        Order draft = saveDraft(null, null);
+        draft.setDescription("Saved by someone else");
+        orderRepository.saveAndFlush(draft);
+
+        mockMvc.perform(patch("/api/orders/{id}/status", draft.getId()).with(as(office))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"status": "CANCELLED", "version": 0}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Changed by someone else. Reload and try again."));
+    }
+
+    @Test
+    void changeStatusWithoutVersionReturnsBadRequest() throws Exception {
+        Order draft = saveDraft(null, null);
+
+        mockMvc.perform(patch("/api/orders/{id}/status", draft.getId()).with(as(office))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"status": "CANCELLED"}
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void servicerCanChangeOwnOrder() throws Exception {
         Order order = saveOrder(OrderStatus.IN_PROGRESS, servicer);
 
@@ -379,7 +424,7 @@ class OrderControllerTest {
                 put("/api/orders/1").contentType(MediaType.APPLICATION_JSON).content("{}"),
                 delete("/api/orders/1"),
                 patch("/api/orders/1/status").contentType(MediaType.APPLICATION_JSON).content("""
-                        {"status": "CANCELLED"}
+                        {"status": "CANCELLED", "version": 0}
                         """));
     }
 
@@ -406,12 +451,14 @@ class OrderControllerTest {
                 .andExpect(status().isForbidden());
     }
 
+    // Sends the order's current version. The test and the request share one transaction,
+    // so the service changes this same instance and its version stays up to date.
     private ResultActions changeStatus(Order order, String status, User user) throws Exception {
         return mockMvc.perform(patch("/api/orders/{id}/status", order.getId()).with(as(user))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"status": "%s"}
-                        """.formatted(status)));
+                        {"status": "%s", "version": %d}
+                        """.formatted(status, order.getVersion())));
     }
 
     private String numberAfterSubmit(Order draft) throws Exception {

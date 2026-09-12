@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -50,4 +51,9 @@ public class Client {
     @OneToMany(mappedBy = "client", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id")
     private List<Location> locations = new ArrayList<>();
+
+    // Optimistic locking: every update increases it, an update with an older version fails.
+    // Adding or removing a location doesn't change it (Hibernate skips mappedBy collections).
+    @Version
+    private Long version;
 }

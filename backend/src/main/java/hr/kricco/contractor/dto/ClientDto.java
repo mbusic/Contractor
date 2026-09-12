@@ -12,6 +12,7 @@ public record ClientDto(
         String phone,
         String email,
         String address,
-        List<LocationDto> locations
+        List<LocationDto> locations,
+        Long version
 ) {
 }

@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Size;
 
 // All fields optional while the order is a DRAFT.
 // Client and location are required once the order is PENDING, IN_PROGRESS or RESOLVED (checked in OrderService).
+// version: ignored on create, required on update (checked in the service, so one record serves both)
 public record OrderRequest(
         Long branchId,
         Long clientId,
@@ -16,6 +17,7 @@ public record OrderRequest(
         @Email @Size(max = 255) String email,
         String description,
         Urgency urgency,
-        @Valid CostsRequest estimatedCosts
+        @Valid CostsRequest estimatedCosts,
+        Long version
 ) {
 }

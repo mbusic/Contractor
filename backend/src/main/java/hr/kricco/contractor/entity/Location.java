@@ -9,6 +9,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -38,4 +39,8 @@ public class Location {
     // Includes the postal code, e.g. "Zagreb 10000"
     @Column(nullable = false)
     private String city;
+
+    // Optimistic locking: every update increases it, an update with an older version fails
+    @Version
+    private Long version;
 }

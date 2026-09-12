@@ -11,6 +11,7 @@ REST endpoints of the Contractor backend. Source: the controllers of the templat
 - POST creates, PUT replaces, PATCH changes one thing (status), DELETE removes.
 - PUT is a full replace: the request carries all fields of the form, and a missing or null field means "empty". [A3] The one exception is the password on user updates: empty means "keep the current password".
 - No pagination - lists return all rows. The POC has little data.
+- Optimistic locking: [A13] every editable row (branch, client, location, user, order) has a `version`, and the DTOs return it. A request that changes an existing row sends back the version it read: all PUT bodies, StatusChangeRequest, AssignmentRequest, and the actual-costs body. No version on create, delete, accept (no body, it relies on `@Version` on the server), and adding notes or photos (they add rows, the order itself doesn't change). Portal submit has no body either - decided with the portal slice. Missing on an update -> 400 "Version is required". Different from the row's version (someone saved in between) -> 409 "Changed by someone else. Reload and try again." The response of a successful write carries the new version.
 - Validation: request DTOs use Bean Validation (`@Valid`, `@NotBlank`, ...).
 - Errors use the RFC 9457 Problem Details format, through Spring's built-in support (`spring.mvc.problemdetails.enabled=true`). Services throw exceptions from the `exception` package, and `ApiExceptionHandler` turns them into Problem Details with the message in the `detail` field (see services.md "Errors"). [A12] The one exception: a 401 for a missing or invalid token comes from the security filter and has an empty body.
 
@@ -23,11 +24,11 @@ REST endpoints of the Contractor backend. Source: the controllers of the templat
 | 200    | OK (GET, PUT, PATCH, POST actions like accept)                               |
 | 201    | Created (POST that creates a row)                                            |
 | 204    | Deleted                                                                      |
-| 400    | Invalid request: validation failed, unknown ID in the body, wrong file type  |
+| 400    | Invalid request: validation failed, unknown ID in the body, wrong file type, missing version |
 | 401    | No token, invalid or expired token, wrong username/password                  |
 | 403    | Wrong role for the endpoint, or the row isn't yours (e.g. another client's order) |
 | 404    | The row in the path doesn't exist                                            |
-| 409    | State conflict: status change not allowed, IN_PROGRESS without a servicer, order already taken, order not in the right status, username taken, a branch/client/location still in use |
+| 409    | State conflict: status change not allowed, IN_PROGRESS without a servicer, order already taken, order not in the right status, username taken, a branch/client/location still in use, stale version |
 
 ## Roles
 
@@ -161,44 +162,45 @@ Requests end in `Request`, responses in `Dto`. "?" = optional.
 |-------------------|--------|
 | LoginRequest      | username, password |
 | LoginResponse     | token, userId, username, role, displayName, branchId?, clientId? |
-| UserDto           | id, username, role, displayName, branchId?, branchName?, clientId?, clientName?, active |
-| EmployeeRequest   | username, password (required on create, max 72 bytes), role (ADMIN, OFFICE or SERVICER), displayName, branchId (required for OFFICE and SERVICER, empty for ADMIN), active (required, so a PUT that forgets it can't deactivate the account) |
-| ClientUserRequest | username, password (required on create, max 72 bytes), displayName |
+| UserDto           | id, username, role, displayName, branchId?, branchName?, clientId?, clientName?, active, version |
+| EmployeeRequest   | username, password (required on create, max 72 bytes), role (ADMIN, OFFICE or SERVICER), displayName, branchId (required for OFFICE and SERVICER, empty for ADMIN), active (required, so a PUT that forgets it can't deactivate the account), version (required on update) |
+| ClientUserRequest | username, password (required on create, max 72 bytes), displayName, version (required on update) |
 
 ### Branches and clients
 
 | Name            | Fields |
 |-----------------|--------|
-| BranchRequest   | name, city? |
-| BranchDto       | id, name, city |
-| ClientRequest   | type, name, contactPerson?, phone?, email? (format checked), address? (billing address) |
-| ClientDto       | id, type, name, contactPerson, phone, email, address, locations: List<LocationDto> |
-| LocationRequest | name?, address, city |
-| LocationDto     | id, name, address, city |
+| BranchRequest   | name, city?, version (required on update) |
+| BranchDto       | id, name, city, version |
+| ClientRequest   | type, name, contactPerson?, phone?, email? (format checked), address? (billing address), version (required on update) |
+| ClientDto       | id, type, name, contactPerson, phone, email, address, locations: List<LocationDto>, version - adding or removing a location doesn't change the client's version |
+| LocationRequest | name?, address, city, version (required on update) |
+| LocationDto     | id, name, address, city, version |
 
 ### Orders
 
 | Name                | Fields |
 |---------------------|--------|
-| OrderRequest        | branchId?, clientId?, locationId?, contactPerson?, phone?, email?, description?, urgency?, estimatedCosts: CostsRequest? - all optional while DRAFT, client and location are checked on submit |
+| OrderRequest        | branchId?, clientId?, locationId?, contactPerson?, phone?, email?, description?, urgency?, estimatedCosts: CostsRequest?, version (required on update) - all optional while DRAFT, client and location are checked on submit |
 | OrderSummaryDto     | id, orderNumber, status, urgency, branchId, branchName, clientName, locationText, assignedServicerId, assignedServicerName, createdAt |
-| OrderDto            | id, orderNumber, status, allowedNextStatuses: List<OrderStatus>, urgency, branch: BranchDto, client: {id, type, name}, location: LocationDto, contactPerson, phone, email, description, assignedServicer: {id, displayName}, estimatedCosts: CostsDto, actualCosts: CostsDto, costDifference: CostsDto, notes: List<NoteDto>, photos: List<PhotoDto>, createdAt, updatedAt |
+| OrderDto            | id, orderNumber, status, allowedNextStatuses: List<OrderStatus>, urgency, branch: BranchDto, client: {id, type, name}, location: LocationDto, contactPerson, phone, email, description, assignedServicer: {id, displayName}, estimatedCosts: CostsDto, actualCosts: CostsDto, costDifference: CostsDto, notes: List<NoteDto>, photos: List<PhotoDto>, createdAt, updatedAt, version |
 | CostsRequest        | km?, workHours?, numberOfWorkers?, materialCost? - none negative. workHours max 9999.99, materialCost max 99999999.99 (the NUMERIC columns) |
 | CostsDto            | km, workHours, numberOfWorkers, totalHours, materialCost - `totalHours` is calculated. In `costDifference` every field is actual - estimated, or null if either value is missing |
-| StatusChangeRequest | status |
-| AssignmentRequest   | servicerId |
+| StatusChangeRequest | status, version |
+| AssignmentRequest   | servicerId, version |
 | NoteRequest         | text |
 | NoteDto             | id, text, authorId, authorName, createdAt |
 | PhotoDto            | id, url |
 
 - `locationText` is the location as one line ("address, city"), for list columns.
+- The actual-costs body (PUT `/api/orders/{id}/actual-costs`) needs a version too. CostsRequest is also nested in OrderRequest, so the exact request shape is decided with that slice.
 ### Portal
 
 | Name                  | Fields |
 |-----------------------|--------|
-| PortalOrderRequest    | locationId?, contactPerson?, phone?, email?, description?, urgency? - location is checked on submit |
+| PortalOrderRequest    | locationId?, contactPerson?, phone?, email?, description?, urgency?, version (required on update) - location is checked on submit |
 | PortalOrderSummaryDto | id, orderNumber, status, urgency, locationText, createdAt |
-| PortalOrderDto        | id, orderNumber, status, urgency, location: LocationDto, contactPerson, phone, email, description, photos: List<PhotoDto>, createdAt, updatedAt |
+| PortalOrderDto        | id, orderNumber, status, urgency, location: LocationDto, contactPerson, phone, email, description, photos: List<PhotoDto>, createdAt, updatedAt, version |
 
 - The portal view has no costs, notes, servicer or branch. See "Decisions to confirm".
 
@@ -218,6 +220,7 @@ Requests end in `Request`, responses in `Dto`. "?" = optional.
 | A10 | `/api/users` for all accounts | `/api/users` for employees, `/api/clients/{id}/users` for client users |
 | A11 | No GET branch by ID, no location update | Both added |
 | A12 | Spring's default error body, no validation | Problem Details + Bean Validation |
+| A13 | No versions, the last save wins | Optimistic locking: DTOs return a `version`, writes send it back, 409 if someone saved in between |
 
 ## Decisions to confirm
 

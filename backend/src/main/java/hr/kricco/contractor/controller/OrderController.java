@@ -70,6 +70,6 @@ public class OrderController {
     @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE', 'SERVICER')")
     public OrderDto changeStatus(@PathVariable Long id, @Valid @RequestBody StatusChangeRequest request,
                                  @AuthenticationPrincipal UserPrincipal principal) {
-        return orderService.changeStatus(id, request.status(), principal.getUser());
+        return orderService.changeStatus(id, request.status(), request.version(), principal.getUser());
     }
 }

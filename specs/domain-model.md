@@ -43,6 +43,8 @@ All classes go under package `hr.kricco.contractor`. IDs are `Long`, generated b
 - User 1 - * OrderNote, as the author. [C3]
 ## Entities
 
+The editable entities (Branch, Client, Location, User, Order) also have a `version` for optimistic locking (services.md "Optimistic locking"). It isn't listed in the tables. OrderNote and OrderPhoto are only added and deleted, so they don't need one. [C11]
+
 ### Branch
 
 | Field | Type   | Notes    |
@@ -304,6 +306,7 @@ Printable HTML documents made from an order (roadmap step 9), as in the template
 | C8  | Any user can be the assigned servicer             | Must have role SERVICER                             | The template doesn't check it                                   |
 | C9  | Servicer sees only assigned orders, the office assigns | Servicer also sees unassigned PENDING orders and can accept one. Taking an order moves it to IN_PROGRESS | First-line process: "servicer sees orders, servicer accepts order" |
 | C10 | Any status can be set at any time                 | Allowed changes listed in StatusTransition          | Rules can be tightened without code changes. For now they still allow everything |
+| C11 | No versions, the last save wins                    | `version` on every editable entity                  | Two people editing the same row: the second save fails instead of silently overwriting the first |
 ## Not domain objects
 
 These template classes are not listed above: DTOs, security classes (UserPrincipal, JWT filter), FileStorageService, and DataSeeder. The DataSeeder data (5 branches, 2 clients, 4 users, 5 orders) can be reused for the seed script in roadmap step 2.

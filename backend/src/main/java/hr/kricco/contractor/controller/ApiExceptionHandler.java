@@ -5,7 +5,9 @@ import hr.kricco.contractor.exception.ConflictException;
 import hr.kricco.contractor.exception.ForbiddenException;
 import hr.kricco.contractor.exception.InvalidCredentialsException;
 import hr.kricco.contractor.exception.NotFoundException;
+import hr.kricco.contractor.service.VersionCheck;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.access.AccessDeniedException;
@@ -43,6 +45,13 @@ public class ApiExceptionHandler {
     @ExceptionHandler(InvalidCredentialsException.class)
     public ProblemDetail handleInvalidCredentials(InvalidCredentialsException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, e.getMessage());
+    }
+
+    // @Version: someone saved the same row between our read and our write. Same answer as a stale version
+    // in the request (VersionCheck). Spring wraps the Hibernate exception into this one.
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ProblemDetail handleOptimisticLock(OptimisticLockingFailureException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, VersionCheck.CHANGED_MESSAGE);
     }
 
     // Thrown by @PreAuthorize when the user's role isn't allowed for the endpoint

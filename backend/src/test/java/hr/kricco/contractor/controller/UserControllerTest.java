@@ -227,9 +227,23 @@ class UserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("office2"))
                 .andExpect(jsonPath("$.role").value("ADMIN"))
-                .andExpect(jsonPath("$.branchId").doesNotExist());
+                .andExpect(jsonPath("$.branchId").doesNotExist())
+                .andExpect(jsonPath("$.version").value(1));
 
         assertThat(userRepository.findById(office.getId()).orElseThrow().getPassword()).isEqualTo(oldHash);
+    }
+
+    @Test
+    void updateWithStaleVersionReturnsConflict() throws Exception {
+        User office = saveUser("office", Role.OFFICE, zagreb);
+        office.setDisplayName("Saved by someone else");
+        userRepository.saveAndFlush(office);
+
+        mockMvc.perform(asAdmin(put("/api/users/{id}", office.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(employeeJson("office", "", "OFFICE", zagreb.getId(), true)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Changed by someone else. Reload and try again."));
     }
 
     @Test
@@ -371,11 +385,12 @@ class UserControllerTest {
         return request.with(user(new UserPrincipal(admin)));
     }
 
+    // version 0 matches a user saved once in the test. Create ignores it.
     private String employeeJson(String username, String password, String role, Long branchId, boolean active) {
         String passwordValue = password == null ? "null" : "\"" + password + "\"";
         String branchValue = branchId == null ? "null" : branchId.toString();
         return """
-                {"username": "%s", "password": %s, "role": "%s", "displayName": "Test %s", "branchId": %s, "active": %s}
+                {"username": "%s", "password": %s, "role": "%s", "displayName": "Test %s", "branchId": %s, "active": %s, "version": 0}
                 """.formatted(username, passwordValue, role, username, branchValue, active);
     }
 

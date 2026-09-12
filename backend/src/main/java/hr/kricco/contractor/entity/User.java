@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -53,4 +54,8 @@ public class User {
     // false = deactivated instead of deleted, so orders and notes keep pointing to the user
     @Column(nullable = false)
     private boolean active = true;
+
+    // Optimistic locking: every update increases it, an update with an older version fails
+    @Version
+    private Long version;
 }

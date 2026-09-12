@@ -66,6 +66,7 @@ public class UserService {
     @Transactional
     public UserDto updateEmployee(Long id, EmployeeRequest request, User currentUser) {
         User user = findEmployee(id);
+        VersionCheck.check(request.version(), user.getVersion());
         checkEmployeeRole(request.role());
         if (isSameUser(user, currentUser)) {
             checkAdminKeepsAccess(request);
@@ -73,7 +74,7 @@ public class UserService {
         checkUsernameFreeIfChanged(user, request.username());
         copyRequestFields(request, user);
         setPasswordIfGiven(user, request.password());
-        return toDto(userRepository.save(user));
+        return toDto(userRepository.saveAndFlush(user));
     }
 
     // Deactivates instead of deleting, so orders and notes keep pointing to the user (domain-model Q3)
@@ -113,10 +114,11 @@ public class UserService {
     @Transactional
     public UserDto updateClientUser(Long clientId, Long userId, ClientUserRequest request) {
         User user = findClientUser(clientId, userId);
+        VersionCheck.check(request.version(), user.getVersion());
         checkUsernameFreeIfChanged(user, request.username());
         copyRequestFields(request, user);
         setPasswordIfGiven(user, request.password());
-        return toDto(userRepository.save(user));
+        return toDto(userRepository.saveAndFlush(user));
     }
 
     // Really deleted: nothing points to a client user. Their token stops working with the row.
@@ -240,6 +242,6 @@ public class UserService {
         String clientName = client == null ? null : client.getName();
         return new UserDto(
                 user.getId(), user.getUsername(), user.getRole(), user.getDisplayName(),
-                branchId, branchName, clientId, clientName, user.isActive());
+                branchId, branchName, clientId, clientName, user.isActive(), user.getVersion());
     }
 }

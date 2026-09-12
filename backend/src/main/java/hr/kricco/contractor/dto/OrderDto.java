@@ -24,6 +24,7 @@ public record OrderDto(
         ServicerDto assignedServicer,
         CostsDto estimatedCosts,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        Long version
 ) {
 }

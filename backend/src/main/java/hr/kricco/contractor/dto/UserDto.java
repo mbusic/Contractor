@@ -11,6 +11,7 @@ public record UserDto(
         String branchName,
         Long clientId,
         String clientName,
-        boolean active
+        boolean active,
+        Long version
 ) {
 }
