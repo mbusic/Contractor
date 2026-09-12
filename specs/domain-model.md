@@ -238,7 +238,7 @@ A table only, no entity: OrderNumberGenerator reads and increases it with one SQ
 | CLIENT   | Klijent       | Client user, not our employee. Linked to a Client. Sees only that client's orders (requests), except the office's unsubmitted drafts, and their documents (see Q5). Creates new orders and changes them only while DRAFT |
 
 - One role per user, stored on User. No Role or Permission tables.
-- Endpoints check the role through Spring Security: at login the role becomes the authority `ROLE_<name>`, and endpoints use `hasRole` / `@PreAuthorize`. Which role can call which endpoint gets decided in roadmap step 5.
+- Endpoints check the role through Spring Security: at login the role becomes the authority `ROLE_<name>`, and endpoints use `hasRole` / `@PreAuthorize`. Which role can call which endpoint is listed per endpoint in rest-api.md.
 - The "sees only ..." rules above are row-level checks in the service code, on top of the role checks.
 - Client users get their own forms and endpoints, separate from the employee ones. Client endpoints allow only CLIENT, and employee endpoints deny CLIENT. The path layout is decided together with the API contract style.
 
@@ -302,7 +302,7 @@ Printable HTML documents made from an order (roadmap step 9), as in the template
 
 - **Q1 - Branch on order.** Decided (slice 4): optional, set by ADMIN/OFFICE through the order form. Portal orders start without a branch.
 - **Q2 - Client.address.** Decided (slice 2): kept as an optional billing address for both client types, printed on the invoice. Work sites are Locations.
-- **Q3 - Deleting referenced rows.** The template hard-deletes clients, users and branches. That fails on the foreign key when orders or notes point to them. Block the delete (simplest), or add an "active" flag? Decided so far: branches - deleting a branch that still has users or orders is blocked with 409. Users - employees are deactivated instead of deleted, client users are deleted (see User). Clients - deleted together with their locations while nothing points to them, 409 while client users or orders do. A location used by an order can't be deleted either (409). Those checks are added by the slices that add the references.
+- **Q3 - Deleting referenced rows.** The template hard-deletes clients, users and branches. That fails on the foreign key when orders or notes point to them. Block the delete (simplest), or add an "active" flag? Decided: branches - deleting a branch that still has users or orders is blocked with 409. Users - employees are deactivated instead of deleted, client users are deleted (see User). Clients - deleted together with their locations while nothing points to them, 409 while client users or orders do. A location used by an order can't be deleted either (409).
 - **Q4 - When a draft gets its order number.** Decided (slice 4): when the order is submitted for the first time. Drafts have no number, so abandoned portal drafts don't use up numbers. An order that goes back to DRAFT and is submitted again keeps its number. Cancelled or deleted submitted orders still leave gaps.
 - **Q5 - Documents a client user can see.** Decided (step 9): quote, report and invoice. Not the work order, it's an internal sheet for the servicer.
 
