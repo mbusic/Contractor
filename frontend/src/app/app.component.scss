@@ -1,0 +1,49 @@
+.navbar {
+  display: flex;
+  align-items: center;
+  background: #2e7d32;
+  color: white;
+  padding: 0 16px;
+  height: 52px;
+  gap: 24px;
+
+  .navbar-brand {
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  .navbar-links {
+    display: flex;
+    gap: 16px;
+    flex: 1;
+
+    a {
+      color: rgba(255,255,255,0.9);
+      text-decoration: none;
+      font-size: 0.95rem;
+      &:hover { color: white; text-decoration: underline; }
+    }
+  }
+
+  .navbar-user {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.9rem;
+  }
+
+  .btn-logout {
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.5);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    &:hover { background: rgba(255,255,255,0.3); }
+  }
+}
+
+main.with-nav {
+  padding: 24px 16px;
+}

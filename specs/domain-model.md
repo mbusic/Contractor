@@ -230,12 +230,12 @@ A table only, no entity: OrderNumberGenerator reads and increases it with one SQ
 
 ### Role
 
-| Value    | Meaning                                                                                           |
-|----------|---------------------------------------------------------------------------------------------------|
-| ADMIN    | Full access. No branch, no client                                                                  |
-| OFFICE   | Office staff / dispatcher ("disponent"). Belongs to a branch. Sees all orders. Can assign or reassign the servicer |
-| SERVICER | Field worker or crew. Belongs to a branch. Sees orders assigned to them, plus all unassigned PENDING orders from every branch. Can accept an unassigned PENDING order [C9] |
-| CLIENT   | Client user, not our employee. Linked to a Client. Sees only that client's orders (requests), except the office's unsubmitted drafts, and their documents (see Q5). Creates new orders and changes them only while DRAFT |
+| Value    | Label         | Meaning                                                                                           |
+|----------|---------------|---------------------------------------------------------------------------------------------------|
+| ADMIN    | Administrator | Full access. No branch, no client                                                                  |
+| OFFICE   | Dispečer      | Office staff / dispatcher ("disponent"). Belongs to a branch. Sees all orders. Can assign or reassign the servicer |
+| SERVICER | Serviser      | Field worker or crew. Belongs to a branch. Sees orders assigned to them, plus all unassigned PENDING orders from every branch. Can accept an unassigned PENDING order [C9] |
+| CLIENT   | Klijent       | Client user, not our employee. Linked to a Client. Sees only that client's orders (requests), except the office's unsubmitted drafts, and their documents (see Q5). Creates new orders and changes them only while DRAFT |
 
 - One role per user, stored on User. No Role or Permission tables.
 - Endpoints check the role through Spring Security: at login the role becomes the authority `ROLE_<name>`, and endpoints use `hasRole` / `@PreAuthorize`. Which role can call which endpoint gets decided in roadmap step 5.
