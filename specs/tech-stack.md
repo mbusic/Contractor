@@ -29,6 +29,8 @@
 - During development the Angular dev server proxies `/api` to the backend (`localhost:8080`). The frontend calls relative `/api/...` URLs, so it has one origin and the backend needs no CORS configuration. Photo URLs (`/api/files/...`) work as they are
 - The frontend lets each role do exactly what the backend allows (the `@PreAuthorize` rules in rest-api.md). ADMIN: everything, including employees and branches. OFFICE: clients with their locations and client users; employees and branches read-only. A button for an action the role can't do isn't shown
 - No frontend tests for now (Angular schematics with `skipTests`). Frontend screens are verified by hand against the running backend
+- Screens: every role starts on its own page ("/" redirects). ADMIN and OFFICE: order list, new order, order detail (edit, servicer, status, costs, photos, notes), admin page (ADMIN: employees, branches, clients; OFFICE: clients, the rest read-only). SERVICER: home page, order list split into "Moji" and "Dostupni", order detail. CLIENT: portal order list, new order (with a new location), order detail (only drafts can be changed and submitted), locations
+- API errors are shown in Croatian: the known backend messages and Bean Validation messages are translated in `core/errors.ts`, anything else gets a general text
 
 ## Photo storage
 

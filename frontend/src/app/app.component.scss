@@ -11,6 +11,8 @@
     font-size: 1.2rem;
     font-weight: 700;
     letter-spacing: 1px;
+    color: white;
+    text-decoration: none;
   }
 
   .navbar-links {
@@ -46,4 +48,17 @@
 
 main.with-nav {
   padding: 24px 16px;
+}
+
+// Phone: brand and user on the first row, the links wrap below
+@media (max-width: 600px) {
+  .navbar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 8px 12px;
+    gap: 8px 16px;
+
+    .navbar-links { order: 3; flex-basis: 100%; flex-wrap: wrap; }
+    .navbar-user { margin-left: auto; }
+  }
 }

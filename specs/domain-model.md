@@ -244,7 +244,10 @@ A table only, no entity: OrderNumberGenerator reads and increases it with one SQ
 
 ### ClientType
 
-`COMPANY`, `INDIVIDUAL`
+| Value      | Label         |
+|------------|---------------|
+| COMPANY    | Tvrtka        |
+| INDIVIDUAL | Fizička osoba |
 
 ### OrderStatus
 

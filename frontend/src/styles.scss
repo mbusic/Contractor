@@ -147,3 +147,20 @@ h3 { margin: 20px 0 8px; font-size: 1rem; color: #444; }
   .table { font-size: 0.8rem; th, td { padding: 7px 8px; } }
   main.with-nav { padding: 12px 10px; }
 }
+
+/* Tabs and one-line forms: from the old admin page, shared by several pages now */
+.tab-bar { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:16px;
+  button { padding:7px 18px; border:1px solid #ccc; background:white; border-radius:4px 4px 0 0; cursor:pointer;
+    &.active { background:#1565c0; color:white; border-color:#1565c0; } } }
+.inline-form { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;
+  input, select { padding:6px 10px; border:1px solid #ccc; border-radius:4px; font-size:.875rem; }
+  label { display:flex; align-items:center; gap:4px; font-size:.875rem; } }
+
+/* A wide table scrolls sideways inside its card on a phone, the page doesn't */
+.table-scroll { overflow-x: auto; }
+.table-scroll .table { min-width: 600px; }
+
+/* Messages */
+.error { color: #c62828; font-size: 0.85rem; margin-bottom: 10px; }
+.field-error { color: #c62828; font-size: 0.78rem; margin-top: 3px; }
+.muted { color: #888; }
