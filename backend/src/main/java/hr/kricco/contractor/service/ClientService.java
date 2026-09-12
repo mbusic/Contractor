@@ -6,6 +6,7 @@ import hr.kricco.contractor.dto.LocationDto;
 import hr.kricco.contractor.dto.LocationRequest;
 import hr.kricco.contractor.entity.Client;
 import hr.kricco.contractor.entity.Location;
+import hr.kricco.contractor.entity.User;
 import hr.kricco.contractor.exception.ConflictException;
 import hr.kricco.contractor.exception.NotFoundException;
 import hr.kricco.contractor.repository.ClientRepository;
@@ -96,6 +97,24 @@ public class ClientService {
             throw new ConflictException("Location is used by orders");
         }
         location.getClient().getLocations().remove(location);
+    }
+
+    // Client portal: the locations of the client user's own client
+
+    @Transactional(readOnly = true)
+    public List<LocationDto> getPortalLocations(User currentUser) {
+        return getById(clientIdOf(currentUser)).locations();
+    }
+
+    // A new work site, e.g. for an order at a new address
+    @Transactional
+    public LocationDto addPortalLocation(LocationRequest request, User currentUser) {
+        return addLocation(clientIdOf(currentUser), request);
+    }
+
+    // The user comes from a finished transaction: only the ID of its client proxy can be read
+    private Long clientIdOf(User currentUser) {
+        return currentUser.getClient().getId();
     }
 
     private Client findClient(Long id) {

@@ -28,6 +28,17 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             """)
     List<Order> findVisibleToServicer(@Param("servicerId") Long servicerId);
 
+    // For the portal: the client's orders that were created in the portal or have a number (were submitted).
+    // An office draft that was never submitted has no number, so it stays hidden. Newest first.
+    @EntityGraph(attributePaths = {"location"})
+    @Query("""
+            SELECT o FROM Order o
+            WHERE o.client.id = :clientId
+              AND (o.createdInPortal = true OR o.orderNumber IS NOT NULL)
+            ORDER BY o.createdAt DESC, o.id DESC
+            """)
+    List<Order> findVisibleInPortal(@Param("clientId") Long clientId);
+
     List<Order> findByAssignedServicerIdAndStatus(Long servicerId, OrderStatus status);
 
     boolean existsByBranchId(Long branchId);

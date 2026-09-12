@@ -117,6 +117,7 @@ The table is `orders` because `order` is a reserved word in SQL.
 | assignedServicer         | User             | Optional, must have role SERVICER [C8]. Can stand for a whole crew. Required for IN_PROGRESS |
 | estimatedCosts           | Costs            | Used for the quote. Columns `estimated_km`, `estimated_work_hours`, ... |
 | actualCosts              | Costs            | Used for the report and the invoice. Columns `actual_km`, `actual_work_hours`, ... |
+| createdInPortal          | boolean          | true if a client user created it in the portal. The portal shows these and every order with a number, so the office's unsubmitted drafts stay hidden from the client |
 | createdAt                | Instant          | Set on insert                                                           |
 | updatedAt                | Instant          | Set on every update                                                     |
 | notes                    | List<OrderNote>  | Cascade all, orphan removal. Newest first                               |
@@ -234,7 +235,7 @@ A table only, no entity: OrderNumberGenerator reads and increases it with one SQ
 | ADMIN    | Full access. No branch, no client                                                                  |
 | OFFICE   | Office staff / dispatcher ("disponent"). Belongs to a branch. Sees all orders. Can assign or reassign the servicer |
 | SERVICER | Field worker or crew. Belongs to a branch. Sees orders assigned to them, plus all unassigned PENDING orders from every branch. Can accept an unassigned PENDING order [C9] |
-| CLIENT   | Client user, not our employee. Linked to a Client. Sees only that client's orders (requests) and their documents (see Q5). Creates new orders |
+| CLIENT   | Client user, not our employee. Linked to a Client. Sees only that client's orders (requests), except the office's unsubmitted drafts, and their documents (see Q5). Creates new orders and changes them only while DRAFT |
 
 - One role per user, stored on User. No Role or Permission tables.
 - Endpoints check the role through Spring Security: at login the role becomes the authority `ROLE_<name>`, and endpoints use `hasRole` / `@PreAuthorize`. Which role can call which endpoint gets decided in roadmap step 5.

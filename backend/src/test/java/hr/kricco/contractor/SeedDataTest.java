@@ -114,17 +114,19 @@ class SeedDataTest {
                 .containsExactly("Zadar 23000", "Pula 52100");
     }
 
+    // The template's five orders plus one draft a client user started in the portal
     @Test
-    void seedCreatesFiveOrdersAtTheirClientsLocations() {
+    void seedCreatesSixOrdersAtTheirClientsLocations() {
         List<Order> orders = orderRepository.findAll();
 
-        assertThat(orders).extracting(Order::getOrderNumber, Order::getStatus)
+        assertThat(orders).extracting(Order::getOrderNumber, Order::getStatus, Order::isCreatedInPortal)
                 .containsExactlyInAnyOrder(
-                        tuple("001/26", OrderStatus.RESOLVED),
-                        tuple("002/26", OrderStatus.IN_PROGRESS),
-                        tuple("003/26", OrderStatus.PENDING),
-                        tuple("004/26", OrderStatus.PENDING),
-                        tuple("005/26", OrderStatus.PENDING));
+                        tuple("001/26", OrderStatus.RESOLVED, false),
+                        tuple("002/26", OrderStatus.IN_PROGRESS, false),
+                        tuple("003/26", OrderStatus.PENDING, false),
+                        tuple("004/26", OrderStatus.PENDING, false),
+                        tuple("005/26", OrderStatus.PENDING, false),
+                        tuple(null, OrderStatus.DRAFT, true));
         for (Order order : orders) {
             assertThat(order.getLocation().getClient().getId())
                     .as("location of %s belongs to its client", order.getOrderNumber())
@@ -135,7 +137,7 @@ class SeedDataTest {
     @Test
     void seedOrderHasCalculatedTotalHours() {
         Order resolved = orderRepository.findAll().stream()
-                .filter(order -> order.getOrderNumber().equals("001/26"))
+                .filter(order -> "001/26".equals(order.getOrderNumber()))
                 .findFirst()
                 .orElseThrow();
 
@@ -147,7 +149,7 @@ class SeedDataTest {
     @Test
     void seedResolvedOrderHasNotesNewestFirst() {
         Order resolved = orderRepository.findAll().stream()
-                .filter(order -> order.getOrderNumber().equals("001/26"))
+                .filter(order -> "001/26".equals(order.getOrderNumber()))
                 .findFirst()
                 .orElseThrow();
 

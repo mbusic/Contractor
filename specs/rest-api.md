@@ -11,7 +11,7 @@ REST endpoints of the Contractor backend. Source: the controllers of the templat
 - POST creates, PUT replaces, PATCH changes one thing (status), DELETE removes.
 - PUT is a full replace: the request carries all fields of the form, and a missing or null field means "empty". [A3] The one exception is the password on user updates: empty means "keep the current password".
 - No pagination - lists return all rows. The POC has little data.
-- Optimistic locking: [A13] every editable row (branch, client, location, user, order) has a `version`, and the DTOs return it. A request that changes an existing row sends back the version it read: all PUT bodies, StatusChangeRequest, AssignmentRequest, and the actual-costs body. No version on create, delete, accept (no body, it relies on `@Version` on the server), and adding notes or photos (they add rows, the order itself doesn't change). Portal submit has no body either - decided with the portal slice. Missing on an update -> 400 "Version is required". Different from the row's version (someone saved in between) -> 409 "Changed by someone else. Reload and try again." The response of a successful write carries the new version.
+- Optimistic locking: [A13] every editable row (branch, client, location, user, order) has a `version`, and the DTOs return it. A request that changes an existing row sends back the version it read: all PUT bodies, StatusChangeRequest, AssignmentRequest, and the actual-costs body. No version on create, delete, accept (no body, it relies on `@Version` on the server), and adding notes or photos (they add rows, the order itself doesn't change). Portal submit sends `{version}` too (SubmitRequest). Missing on an update -> 400 "Version is required". Different from the row's version (someone saved in between) -> 409 "Changed by someone else. Reload and try again." The response of a successful write carries the new version.
 - Validation: request DTOs use Bean Validation (`@Valid`, `@NotBlank`, ...). A failed check gives 400 with detail "Invalid request content." and a `fieldErrors` list, one entry per failed field, sorted by field. Nested fields have a path (`costs.km`). The messages are Hibernate Validator's English defaults. JSON that can't be read (bad syntax, unknown enum value) is a 400 "Failed to read request" without `fieldErrors`.
 
   ```json
@@ -54,10 +54,11 @@ Every endpoint checks the role through `@PreAuthorize` on its controller method 
 | HealthController    | `/api/health`                          | public                         |
 | BranchController    | `/api/branches`                        | employees read, ADMIN writes   |
 | UserController      | `/api/users`                           | ADMIN, OFFICE (read only)      |
-| ClientController    | `/api/clients`                         | ADMIN, OFFICE                  |
-| OrderController     | `/api/orders`                          | employees (varies per endpoint) |
+| ClientController    | `/api/clients`, `/api/portal/locations` | ADMIN, OFFICE; portal paths CLIENT |
+| OrderController     | `/api/orders`, `/api/portal/orders`    | employees (varies per endpoint); portal paths CLIENT |
 | FileController      | `/api/files`                           | public                         |
-| PortalController    | `/api/portal`                          | CLIENT                         |
+
+- Controllers are grouped by object, not by who calls them. The client portal endpoints (`/api/portal/...`) sit in the controller of their object, next to the employee endpoints, each with `@PreAuthorize("hasRole('CLIENT')")` and their own request/response shapes.
 
 ## Endpoints
 
@@ -144,16 +145,20 @@ Every endpoint checks the role through `@PreAuthorize` on its controller method 
 
 For client users (role CLIENT). Everything is limited to the user's own client. [A2]
 
+- A client user sees the client's orders that were created in the portal (`Order.createdInPortal`) or have an order number (were submitted). The office's unsubmitted drafts stay hidden. An order the user can't see (another client's, or an office draft) is 403 "You can't see this order", an unknown ID is 404.
+- A client user can change an order (fields, photos, submit) only while it's a DRAFT (409 "Only a draft can be changed"), and can't cancel or delete it. A mistake in a submitted order goes through the office.
+- The portal view has no costs, notes, servicer or branch. Clients see the costs in the quote and invoice documents.
+
 | Method | Path                                          | Request            | Response                    | Notes |
 |--------|-----------------------------------------------|--------------------|-----------------------------|-------|
-| GET    | `/api/portal/orders`                          | -                  | List<PortalOrderSummaryDto> | All orders of the user's client, including drafts. Newest first |
-| GET    | `/api/portal/orders/{id}`                     | -                  | PortalOrderDto              | 403 if it's another client's order |
-| POST   | `/api/portal/orders`                          | PortalOrderRequest | PortalOrderDto (201)        | Creates a DRAFT for the user's client |
-| PUT    | `/api/portal/orders/{id}`                     | PortalOrderRequest | PortalOrderDto              | Only while DRAFT, else 409 |
-| POST   | `/api/portal/orders/{id}/submit`              | -                  | PortalOrderDto              | DRAFT -> PENDING, checks the required fields. 409 if not a DRAFT |
-| POST   | `/api/portal/orders/{id}/photos`              | multipart `file`   | PortalOrderDto (201)        | Only while DRAFT. JPEG, PNG, GIF or WebP only, max 6 |
-| DELETE | `/api/portal/orders/{id}/photos/{photoId}`    | -                  | 204                         | Only while DRAFT |
-| GET    | `/api/portal/orders/{id}/documents/{type}`    | -                  | HTML page (`text/html`)     | Only the types clients may see (domain-model Q5), else 403 |
+| GET    | `/api/portal/orders`                          | -                  | List<PortalOrderSummaryDto> | The orders the user may see (see above), including their own drafts. Newest first |
+| GET    | `/api/portal/orders/{id}`                     | -                  | PortalOrderDto              | 403 if the user can't see it |
+| POST   | `/api/portal/orders`                          | PortalOrderRequest | PortalOrderDto (201)        | Creates a DRAFT for the user's client, marked as created in the portal. 400 if the location isn't the client's |
+| PUT    | `/api/portal/orders/{id}`                     | PortalOrderRequest | PortalOrderDto              | Full replace. Version check, then only while DRAFT, else 409 |
+| POST   | `/api/portal/orders/{id}/submit`              | SubmitRequest      | PortalOrderDto              | DRAFT -> PENDING: version check, 409 if not a DRAFT, 400 without a location, takes the order number |
+| POST   | `/api/portal/orders/{id}/photos`              | multipart `file`   | PortalOrderDto (201)        | Only while DRAFT. Same rules as the employee upload (types, 10 MB, max 6) |
+| DELETE | `/api/portal/orders/{id}/photos/{photoId}`    | -                  | 204                         | Only while DRAFT. 404 if the photo isn't on this order |
+| GET    | `/api/portal/orders/{id}/documents/{type}`    | -                  | HTML page (`text/html`)     | Only the types clients may see (domain-model Q5), else 403. Not built yet: comes with the document views (roadmap step 9) |
 | GET    | `/api/portal/locations`                       | -                  | List<LocationDto>           | Locations of the user's client |
 | POST   | `/api/portal/locations`                       | LocationRequest    | LocationDto (201)           | New work site, for an order at a new address |
 
@@ -206,18 +211,18 @@ Requests end in `Request`, responses in `Dto`. "?" = optional.
 
 | Name                  | Fields |
 |-----------------------|--------|
-| PortalOrderRequest    | locationId?, contactPerson?, phone?, email?, description?, urgency?, version (required on update) - location is checked on submit |
+| PortalOrderRequest    | locationId?, contactPerson?, phone?, email?, description?, urgency?, version (required on update) - the location must be the client's, and is required on submit |
+| SubmitRequest         | version |
 | PortalOrderSummaryDto | id, orderNumber, status, urgency, locationText, createdAt |
 | PortalOrderDto        | id, orderNumber, status, urgency, location: LocationDto, contactPerson, phone, email, description, photos: List<PhotoDto>, createdAt, updatedAt, version |
 
-- The portal view has no costs, notes, servicer or branch. See "Decisions to confirm".
 
 ## Changes from the template
 
 | #   | Template | This project |
 |-----|----------|--------------|
 | A1  | No role checks on endpoints | `@PreAuthorize` role check on every endpoint |
-| A2  | Client users call the same endpoints as employees, filtered by role in the service | Client users have their own endpoints under `/api/portal`, with their own request/response shapes |
+| A2  | Client users call the same endpoints as employees, filtered by role in the service | Client users have their own endpoints under `/api/portal`, with their own request/response shapes. They live in the object's controller (OrderController, ClientController) |
 | A3  | PUT is partial (null = keep) | PUT is a full replace |
 | A4  | Order location is free text | `locationId` (domain-model C1) |
 | A5  | Any status can be set | Checked against StatusTransition. The order detail returns `allowedNextStatuses` |
@@ -234,6 +239,4 @@ Requests end in `Request`, responses in `Dto`. "?" = optional.
 
 My choices in this document that nobody has confirmed yet:
 
-- The portal order view has no costs, notes, servicer or branch. Clients see the costs in the quote and invoice documents.
-- A client user can change an order (fields, photos) only while it's a DRAFT, and can't cancel or delete it.
 - Documents for employees: ADMIN and OFFICE only, as in the template (it shows the document buttons only to the office). Servicers can't open them.

@@ -10,6 +10,9 @@ import hr.kricco.contractor.dto.OrderDto;
 import hr.kricco.contractor.dto.OrderRequest;
 import hr.kricco.contractor.dto.OrderSummaryDto;
 import hr.kricco.contractor.dto.PhotoDto;
+import hr.kricco.contractor.dto.PortalOrderDto;
+import hr.kricco.contractor.dto.PortalOrderRequest;
+import hr.kricco.contractor.dto.PortalOrderSummaryDto;
 import hr.kricco.contractor.dto.ServicerDto;
 import hr.kricco.contractor.dto.UploadedFile;
 import hr.kricco.contractor.entity.Branch;
@@ -40,7 +43,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Set;
 
-// Orders for employees. Client users go through the portal (a later slice).
+// Orders: the employee endpoints (/api/orders) and the client portal (/api/portal/orders).
 @Service
 @RequiredArgsConstructor
 public class OrderService {
@@ -216,6 +219,11 @@ public class OrderService {
         if (!canChange(order, currentUser)) {
             throw new ForbiddenException("You can't change this order");
         }
+        removePhoto(order, photoId);
+    }
+
+    // 404 if the photo isn't on this order
+    private void removePhoto(Order order, Long photoId) {
         OrderPhoto photo = order.getPhotos().stream()
                 .filter(candidate -> candidate.getId().equals(photoId))
                 .findFirst()
@@ -226,8 +234,8 @@ public class OrderService {
         fileStorageService.delete(photo.getFilename());
     }
 
-    // Shared with the portal (later slice). Two uploads at the same moment can get past the limit (accepted).
-    void storePhoto(Order order, UploadedFile file) {
+    // Two uploads at the same moment can get past the limit (accepted)
+    private void storePhoto(Order order, UploadedFile file) {
         if (order.getPhotos().size() >= MAX_PHOTOS) {
             throw new BadRequestException("An order can have at most " + MAX_PHOTOS + " photos");
         }
@@ -259,8 +267,137 @@ public class OrderService {
         }
     }
 
-    // Every status change goes through here, also the ones from accept, assign, releaseOrdersOf and the portal (later slice)
-    void applyStatus(Order order, OrderStatus newStatus) {
+    // Client portal. A client user works only with their own client's orders: the ones created in the portal
+    // or submitted (they have a number). The office's unsubmitted drafts stay hidden. Changes only while DRAFT.
+
+    @Transactional(readOnly = true)
+    public List<PortalOrderSummaryDto> getPortalOrders(User currentUser) {
+        return orderRepository.findVisibleInPortal(clientIdOf(currentUser)).stream()
+                .map(this::toPortalSummaryDto)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PortalOrderDto getPortalOrder(Long id, User currentUser) {
+        return toPortalDto(findPortalOrder(id, currentUser));
+    }
+
+    // A new DRAFT for the user's client, marked as created in the portal. No number, branch or costs.
+    @Transactional
+    public PortalOrderDto createPortalOrder(PortalOrderRequest request, User currentUser) {
+        Order order = new Order();
+        order.setStatus(OrderStatus.DRAFT);
+        order.setClient(clientRepository.getReferenceById(clientIdOf(currentUser)));
+        order.setCreatedInPortal(true);
+        copyPortalRequestFields(request, order, currentUser);
+        return toPortalDto(orderRepository.save(order));
+    }
+
+    // Full replace of the form fields
+    @Transactional
+    public PortalOrderDto updatePortalOrder(Long id, PortalOrderRequest request, User currentUser) {
+        Order order = findPortalOrder(id, currentUser);
+        VersionCheck.check(request.version(), order.getVersion());
+        checkDraft(order);
+        copyPortalRequestFields(request, order, currentUser);
+        return toPortalDto(orderRepository.saveAndFlush(order));
+    }
+
+    // DRAFT -> PENDING: 400 without a location, takes the order number
+    @Transactional
+    public PortalOrderDto submitPortalOrder(Long id, Long version, User currentUser) {
+        Order order = findPortalOrder(id, currentUser);
+        VersionCheck.check(version, order.getVersion());
+        checkDraft(order);
+        applyStatus(order, OrderStatus.PENDING);
+        return toPortalDto(orderRepository.saveAndFlush(order));
+    }
+
+    @Transactional
+    public PortalOrderDto addPortalPhoto(Long id, UploadedFile file, User currentUser) {
+        Order order = findPortalOrder(id, currentUser);
+        checkDraft(order);
+        storePhoto(order, file);
+        return toPortalDto(orderRepository.saveAndFlush(order));
+    }
+
+    @Transactional
+    public void deletePortalPhoto(Long id, Long photoId, User currentUser) {
+        Order order = findPortalOrder(id, currentUser);
+        checkDraft(order);
+        removePhoto(order, photoId);
+    }
+
+    // The user comes from a finished transaction: only the ID of its client proxy can be read
+    private Long clientIdOf(User currentUser) {
+        return currentUser.getClient().getId();
+    }
+
+    // 404 for an unknown ID. Another client's order, or an office draft of this client, is 403.
+    private Order findPortalOrder(Long id, User currentUser) {
+        Order order = findOrder(id);
+        boolean ownClient = order.getClient() != null && order.getClient().getId().equals(clientIdOf(currentUser));
+        boolean visible = order.isCreatedInPortal() || order.getOrderNumber() != null;
+        if (!ownClient || !visible) {
+            throw new ForbiddenException("You can't see this order");
+        }
+        return order;
+    }
+
+    private void checkDraft(Order order) {
+        if (order.getStatus() != OrderStatus.DRAFT) {
+            throw new ConflictException("Only a draft can be changed");
+        }
+    }
+
+    // Full replace. The location must be one of the user's client's, else 400 (the ID is in the body).
+    private void copyPortalRequestFields(PortalOrderRequest request, Order order, User currentUser) {
+        order.setLocation(findOwnLocationOrNull(request.locationId(), currentUser));
+        order.setContactPerson(request.contactPerson());
+        order.setPhone(request.phone());
+        order.setEmail(request.email());
+        order.setDescription(request.description());
+        order.setUrgency(request.urgency());
+    }
+
+    private Location findOwnLocationOrNull(Long locationId, User currentUser) {
+        if (locationId == null) {
+            return null;
+        }
+        return locationRepository.findByIdAndClientId(locationId, clientIdOf(currentUser))
+                .orElseThrow(() -> new BadRequestException("Location not found"));
+    }
+
+    private PortalOrderSummaryDto toPortalSummaryDto(Order order) {
+        return new PortalOrderSummaryDto(
+                order.getId(),
+                order.getOrderNumber(),
+                order.getStatus(),
+                order.getUrgency(),
+                toLocationText(order.getLocation()),
+                order.getCreatedAt());
+    }
+
+    // No costs, notes, servicer or branch: they're internal
+    private PortalOrderDto toPortalDto(Order order) {
+        return new PortalOrderDto(
+                order.getId(),
+                order.getOrderNumber(),
+                order.getStatus(),
+                order.getUrgency(),
+                toLocationDto(order.getLocation()),
+                order.getContactPerson(),
+                order.getPhone(),
+                order.getEmail(),
+                order.getDescription(),
+                order.getPhotos().stream().map(this::toPhotoDto).toList(),
+                order.getCreatedAt(),
+                order.getUpdatedAt(),
+                order.getVersion());
+    }
+
+    // Every status change goes through here, also the ones from accept, assign, releaseOrdersOf and portal submit
+    private void applyStatus(Order order, OrderStatus newStatus) {
         if (!statusTransitionService.isAllowed(order.getStatus(), newStatus)) {
             throw new ConflictException("Status change from " + order.getStatus() + " to " + newStatus + " is not allowed");
         }

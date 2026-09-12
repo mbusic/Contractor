@@ -95,7 +95,9 @@ CREATE TABLE orders (
     actual_material_cost        NUMERIC(10, 2),
     created_at                  TIMESTAMPTZ NOT NULL,
     updated_at                  TIMESTAMPTZ NOT NULL,
-    version                     BIGINT      NOT NULL DEFAULT 0
+    version                     BIGINT      NOT NULL DEFAULT 0,
+    -- true = a client user created it in the portal. The portal hides the office's unsubmitted drafts.
+    created_in_portal           BOOLEAN     NOT NULL DEFAULT FALSE
 );
 
 -- Comments on an order. Only added, never edited. Deleted together with their order (JPA cascade on Order.notes).

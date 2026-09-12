@@ -50,12 +50,11 @@ Rule: services don't know about HTTP. They never import `org.springframework.htt
 | AuthService             | AuthController                      | Logic was in AuthController [S1] |
 | BranchService           | BranchController                    | BranchService                    |
 | UserService             | UserController, ClientController    | UserService                      |
-| ClientService           | ClientController, PortalService     | ClientService                    |
-| OrderService            | OrderController, PortalService      | OrderService                     |
-| PortalService           | PortalController                    | new [S2]                         |
-| StatusTransitionService | OrderService, PortalService         | new [S3]                         |
-| OrderNumberGenerator    | OrderService, PortalService         | OrderNumberGenerator             |
-| DocumentService         | OrderService, PortalService         | DocumentService [S4]             |
+| ClientService           | ClientController                    | ClientService, plus the portal locations [S2] |
+| OrderService            | OrderController, UserService        | OrderService, plus the portal orders [S2] |
+| StatusTransitionService | OrderService                        | new [S3]                         |
+| OrderNumberGenerator    | OrderService                        | OrderNumberGenerator             |
+| DocumentService         | OrderService                        | DocumentService [S4]             |
 | FileStorageService      | OrderService, FileController        | FileStorageService               |
 
 ## AuthService
@@ -114,16 +113,22 @@ Rules:
 | `ClientDto create(ClientRequest req)` | |
 | `ClientDto update(Long id, ClientRequest req)` | Version check, full replace |
 | `void delete(Long id)` | Locations are deleted with it (cascade). 409 "Client has users" / "Client has orders" while client users or orders point to it (domain-model Q3) |
-| `List<LocationDto> getLocations(Long clientId)` | Used by the portal (slice 9) |
 | `LocationDto addLocation(Long clientId, LocationRequest req)` | |
 | `LocationDto updateLocation(Long clientId, Long locationId, LocationRequest req)` | [S5]. 404 if the location belongs to another client. Version check |
 | `void deleteLocation(Long clientId, Long locationId)` | 404 if the location belongs to another client (the template gives 400). 409 "Location is used by orders". Removed through `client.getLocations()`, so orphan removal deletes it |
 
 - Clients sorted by name, locations by ID (the order they were added).
 
+Client portal (`/api/portal/locations`, CLIENT only). The client is always the user's own (`currentUser.client`; only its ID can be read, the user comes from a finished transaction):
+
+| Method | Does |
+|--------|------|
+| `List<LocationDto> getPortalLocations(User currentUser)` | Through `getById` |
+| `LocationDto addPortalLocation(LocationRequest req, User currentUser)` | Through `addLocation` |
+
 ## OrderService
 
-For employees. Client users go through PortalService.
+Employee methods first, then the client portal methods (see "Client portal" below).
 
 | Method | Does |
 |--------|------|
@@ -142,12 +147,13 @@ For employees. Client users go through PortalService.
 | `void deletePhoto(Long orderId, Long photoId, User currentUser)` | Row check [S6]. 404 "Photo not found" if the photo isn't on this order. Deletes the row, flushes, then deletes the file |
 | `String getDocument(Long id, DocumentType type, User currentUser)` | Row check [S4], then `DocumentService.render` |
 
-Shared with PortalService (not exposed through REST directly):
+Internal (private), used by several of the methods above:
 
 | Method | Does |
 |--------|------|
 | `void applyStatus(Order order, OrderStatus newStatus)` | 409 if StatusTransitionService doesn't allow it. 409 "Assign a servicer first" for IN_PROGRESS without a servicer. For a submitted status (PENDING, IN_PROGRESS, RESOLVED): 400 without client or location, and takes a number from OrderNumberGenerator if the order has none yet. A change to PENDING clears the servicer: a PENDING order never has one |
 | `void storePhoto(Order order, UploadedFile file)` | Max 6 per order (400). Quick check on the file name extension and Content-Type, then `ImageType.detect` on the first bytes decides (both 400, see rest-api.md "Photos"). Stores the bytes through FileStorageService with the detected type's extension. Two uploads at the same moment can pass the limit together (accepted, no lock) |
+| `void removePhoto(Order order, Long photoId)` | 404 "Photo not found" if the photo isn't on the order. Deletes the row, flushes, then deletes the file |
 
 Rules:
 - **Row check** (`checkAccess`): ADMIN and OFFICE may touch every order. A SERVICER may read an order assigned to them or an unassigned PENDING one, and may change only orders assigned to them. Otherwise 403.
@@ -157,22 +163,18 @@ Rules:
 - **Unknown IDs in the body** (branch, client, location) -> 400 "Xxx not found", not 404: the path itself exists.
 - **Lists** load branch, client, location and servicer with an `@EntityGraph`, so a row doesn't trigger four extra queries. Newest first, the ID breaks ties.
 
-## PortalService
-
-[S2] Everything for client users. Every method takes `User currentUser` and works only with `currentUser.client`. Another client's order -> 403.
+Client portal (`/api/portal/orders`, CLIENT only) [S2]. Every method takes `User currentUser` and works only with `currentUser.client` (only its ID can be read: the user comes from a finished transaction). Visible orders: the client's orders with `createdInPortal` or an order number. Anything else -> 403, unknown ID -> 404. Order of checks for a change: 404, 403, version, then DRAFT-only (409 "Only a draft can be changed"). The responses are PortalOrderDto / PortalOrderSummaryDto: no costs, notes, servicer or branch.
 
 | Method | Does |
 |--------|------|
-| `List<PortalOrderSummaryDto> getOrders(User currentUser)` | Orders of the user's client, including drafts |
-| `PortalOrderDto getOrder(Long id, User currentUser)` | |
-| `PortalOrderDto createOrder(PortalOrderRequest req, User currentUser)` | New DRAFT, client = the user's client, no branch, no costs |
-| `PortalOrderDto updateOrder(Long id, PortalOrderRequest req, User currentUser)` | Only while DRAFT (409) |
-| `PortalOrderDto submitOrder(Long id, User currentUser)` | Only while DRAFT (409), then `OrderService.applyStatus(PENDING)` |
-| `PortalOrderDto addPhoto(Long id, UploadedFile file, User currentUser)` | Only while DRAFT, then `OrderService.storePhoto` |
-| `void deletePhoto(Long id, Long photoId, User currentUser)` | Only while DRAFT |
-| `String getDocument(Long id, DocumentType type, User currentUser)` | 403 if clients may not see this type (domain-model Q5), then `DocumentService.render` |
-| `List<LocationDto> getLocations(User currentUser)` | Through ClientService |
-| `LocationDto addLocation(LocationRequest req, User currentUser)` | Through ClientService |
+| `List<PortalOrderSummaryDto> getPortalOrders(User currentUser)` | The visible orders, including the client's own drafts. Newest first |
+| `PortalOrderDto getPortalOrder(Long id, User currentUser)` | |
+| `PortalOrderDto createPortalOrder(PortalOrderRequest req, User currentUser)` | New DRAFT, client = the user's client, `createdInPortal = true`, no branch, no costs |
+| `PortalOrderDto updatePortalOrder(Long id, PortalOrderRequest req, User currentUser)` | Version check, only while DRAFT (409), full replace. The location must be the client's (400) |
+| `PortalOrderDto submitPortalOrder(Long id, Long version, User currentUser)` | Version check, only while DRAFT (409), then `applyStatus(PENDING)` |
+| `PortalOrderDto addPortalPhoto(Long id, UploadedFile file, User currentUser)` | Only while DRAFT, then `storePhoto` |
+| `void deletePortalPhoto(Long id, Long photoId, User currentUser)` | Only while DRAFT, then `removePhoto` |
+| `String getPortalDocument(Long id, DocumentType type, User currentUser)` | 403 if clients may not see this type (domain-model Q5), then `DocumentService.render`. Comes with roadmap step 9 |
 
 ## StatusTransitionService
 
@@ -206,7 +208,7 @@ The rows come from `schema.sql` (see domain-model StatusTransition).
 | `String render(Order order, DocumentType type)` | Returns the whole HTML page of the document, built from the current order data. One private method per type (quote, work order, report, invoice) |
 
 - Same approach as the template: fixed HTML layouts in Java text blocks, with inline CSS and Croatian labels. Content per type: see domain-model DocumentType. Nothing is stored.
-- Access is checked by the caller (OrderService or PortalService) before `render`.
+- Access is checked by the caller (OrderService, employee or portal method) before `render`.
 - Runs inside the caller's read-only transaction, because the order's notes and photos load lazily.
 - The page has a "Ispis / PDF" button that calls `window.print()`. `@media print` hides the button. The user saves a PDF through the browser.
 - Photos are `<img>` tags with an absolute URL: `app.base-url` + `/api/files/{filename}`. That's why `/api/files/**` is public.
@@ -243,9 +245,9 @@ Not services, but the auth steps (roadmap steps 3-5) need them. The same classes
 | #  | Template | This project |
 |----|----------|--------------|
 | S1 | AuthController and DocumentController use repositories directly | Controllers only call services. Login logic moves to AuthService |
-| S2 | OrderService handles client users by role | Client users have their own PortalService |
+| S2 | OrderService handles client users by role inside the employee methods | Client users have their own portal methods (`getPortalOrders`, ... in OrderService, `getPortalLocations`, ... in ClientService) with their own DTOs, next to the employee methods of the same object |
 | S3 | No status rules | StatusTransitionService checks every status change |
-| S4 | DocumentController loads the order and calls DocumentService with no access check | Same HTML approach, but it's called through OrderService / PortalService, which check access first. The layouts follow the new model (Location, Urgency labels, calculated total hours) |
+| S4 | DocumentController loads the order and calls DocumentService with no access check | Same HTML approach, but it's called through OrderService, which checks access first. The layouts follow the new model (Location, Urgency labels, calculated total hours) |
 | S5 | No location update | `updateLocation` |
 | S6 | `deletePhoto` has no access check | Same row check as the other order methods |
 | S7 | OrderNumberGenerator reads the year row without a lock | One upsert statement that locks the row, so parallel orders don't get the same number |

@@ -70,3 +70,9 @@ INSERT INTO order_notes (order_id, author_id, text, created_at) VALUES
     (1, 3, 'Zamijenjeno 12 pločica, fuge zapunjene.',              '2026-09-03 14:30:00+00'),
     (1, 2, 'Klijent potvrdio da je sve u redu.',                   '2026-09-03 16:00:00+00'),
     (2, 3, 'Potreban dodatni materijal, dolazim ponovno sutra.',   '2026-09-02 10:00:00+00');
+
+-- A draft the client user started in the portal: no number yet, no costs, no branch
+INSERT INTO orders (client_id, location_id, contact_person, phone, description, urgency, status,
+                    created_in_portal, created_at, updated_at) VALUES
+    (1, 1, 'Petar Perić', '097 587 6210', 'Vrata skladišta se teško zatvaraju', 'ONE_WEEK', 'DRAFT',
+     TRUE, '2026-09-06 08:00:00+00', '2026-09-06 08:00:00+00');

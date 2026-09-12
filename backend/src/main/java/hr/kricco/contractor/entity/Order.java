@@ -115,6 +115,11 @@ public class Order {
     @OrderBy("id")
     private List<OrderPhoto> photos = new ArrayList<>();
 
+    // A client user created it in the portal. The portal shows these and every order that has a number,
+    // so the office's unsubmitted drafts stay hidden from the client.
+    @Column(nullable = false)
+    private boolean createdInPortal;
+
     // Optimistic locking: every update increases it, an update with an older version fails
     @Version
     private Long version;
