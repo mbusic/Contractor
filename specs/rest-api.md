@@ -125,8 +125,8 @@ Every endpoint checks the role through `@PreAuthorize` on its controller method 
 | PUT    | `/api/orders/{id}/assignment`          | ADMIN, OFFICE          | AssignmentRequest  | OrderDto               | PENDING: assign + move to IN_PROGRESS. IN_PROGRESS: reassign. Other statuses: 409. 400 if the user is unknown, isn't a SERVICER, or is deactivated [A6] |
 | PUT    | `/api/orders/{id}/actual-costs`        | employees              | ActualCostsRequest | OrderDto               | Full replace of the actual costs, in any status. SERVICER: only on orders assigned to them (403) [A7] |
 | POST   | `/api/orders/{id}/notes`               | employees              | NoteRequest        | OrderDto (201)         | In any status. SERVICER: only on orders assigned to them (403). No version: the note is a new row, the order doesn't change |
-| POST   | `/api/orders/{id}/photos`              | employees              | multipart `file`   | OrderDto (201)         | JPEG, PNG, GIF or WebP only. Max 6 per order (400). SERVICER: only on orders assigned to them |
-| DELETE | `/api/orders/{id}/photos/{photoId}`    | employees              | -                  | 204                    | SERVICER: only on orders assigned to them [A9] |
+| POST   | `/api/orders/{id}/photos`              | employees              | multipart `file`   | OrderDto (201)         | In any status. JPEG, PNG, GIF or WebP, max 10 MB (413). Max 6 per order (400). SERVICER: only on orders assigned to them (403). No version. See "Photos" below |
+| DELETE | `/api/orders/{id}/photos/{photoId}`    | employees              | -                  | 204                    | Deletes the row and the file. 404 if the photo isn't on this order. SERVICER: only on orders assigned to them [A9] |
 | GET    | `/api/orders/{id}/documents/{type}`    | ADMIN, OFFICE          | -                  | HTML page (`text/html`) | `{type}` = DocumentType value (`QUOTE`, `WORK_ORDER`, `REPORT`, `INVOICE`). Built from the current order data, not stored [A8] |
 
 - Documents: the frontend fetches the HTML with the JWT and opens it in a new tab as a blob, as in the template. The user prints it or saves it as PDF through the browser.
@@ -136,7 +136,7 @@ Every endpoint checks the role through `@PreAuthorize` on its controller method 
 
 | Method | Path                     | Roles  | Response                         | Notes |
 |--------|--------------------------|--------|----------------------------------|-------|
-| GET    | `/api/files/{filename}`  | public | File bytes (`image/jpeg`, `image/png`) | Photos. 404 if missing |
+| GET    | `/api/files/{filename}`  | public | File bytes | Photos. `Content-Type` from the stored type, `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`. 404 for an unknown name, a name outside the upload folder, or a non-image file |
 
 - File names are random UUIDs (e.g. `3f2a...c9.jpg`), so a URL can't be guessed. A user gets the URL only through an authenticated endpoint (order detail, portal order detail), and after that it works without a token. This is needed because an `<img>` tag can't send the JWT header - on the order detail screen and in the document pages.
 
@@ -200,6 +200,7 @@ Requests end in `Request`, responses in `Dto`. "?" = optional.
 
 - `locationText` is the location as one line ("address, city"), for list columns.
 - `OrderDto.notes` is newest first. The response always has all notes, so the UI sorts the other way on its own, without an API parameter.
+- Photos: the upload gets a quick check first - the file name must end in .jpg/.jpeg/.png/.gif/.webp and the part's Content-Type must be one of the four image types (400 "Only JPEG, PNG, GIF or WebP images are allowed"). Then the file's first bytes (magic bytes) decide: no match -> 400 "The file is not a valid JPEG, PNG, GIF or WebP image". The stored file gets the extension of the detected type, so a PNG uploaded as photo.jpg is stored and served as PNG. `PhotoDto.url` is relative (`/api/files/<uuid>.<ext>`). `attachment` makes a browser download a photo URL opened directly, while `<img>` tags still show it.
 - ActualCostsRequest wraps CostsRequest instead of adding a version to it, because CostsRequest is also nested in OrderRequest, where the order's version is already on the top level.
 ### Portal
 

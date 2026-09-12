@@ -181,11 +181,13 @@ Embeddable, not an entity: its fields are columns of `orders`. Order uses it twi
 | Field    | Type   | Notes                                                                 |
 |----------|--------|-----------------------------------------------------------------------|
 | order    | Order  | required                                                              |
-| filename | String | required. Name of the file in `./uploads`: random UUID + original extension |
+| filename | String | required, unique. Name of the file in `./uploads`: random UUID + the extension of the detected image type |
 
 - The URL is built from the filename (`/api/files/{filename}`), not stored. [C4]
 - Max 6 photos per order.
-- Images only: JPEG, PNG, GIF or WebP (the types the template's file endpoint serves).
+- Images only: JPEG, PNG, GIF or WebP (the types the template's file endpoint serves), max 10 MB. The file's first bytes decide the type, not its name.
+- Can be added in any order status, by anyone who may change the order. The order lists its photos in upload order.
+- The seed has no photos: their rows would point to files that don't exist.
 - Deleting a photo or its order also deletes the file.
 
 ### OrderSequence

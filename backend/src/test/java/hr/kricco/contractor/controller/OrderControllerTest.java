@@ -23,6 +23,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -34,6 +35,7 @@ import java.math.BigDecimal;
 import java.util.stream.Stream;
 
 import static com.jayway.jsonpath.JsonPath.read;
+import static hr.kricco.contractor.TestUploads.JPEG;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.matchesPattern;
@@ -42,6 +44,7 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -735,7 +738,9 @@ class OrderControllerTest {
                         """),
                 post("/api/orders/1/notes").contentType(MediaType.APPLICATION_JSON).content("""
                         {"text": "Note"}
-                        """));
+                        """),
+                multipart("/api/orders/1/photos").file(new MockMultipartFile("file", "photo.jpg", "image/jpeg", JPEG)),
+                delete("/api/orders/1/photos/1"));
     }
 
     @ParameterizedTest

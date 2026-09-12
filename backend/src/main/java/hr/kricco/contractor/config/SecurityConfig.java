@@ -6,6 +6,7 @@ import jakarta.servlet.DispatcherType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -41,6 +42,9 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/login", "/api/health").permitAll()
+                        // Photos: the document pages load them with <img>, which can't send a token.
+                        // The names are random UUIDs, so nobody can guess one.
+                        .requestMatchers(HttpMethod.GET, "/api/files/**").permitAll()
                         // Tomcat's internal forward to /error after an uncaught exception or sendError().
                         // The forwarded request has no authentication, so without this the real error would become a 401.
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()

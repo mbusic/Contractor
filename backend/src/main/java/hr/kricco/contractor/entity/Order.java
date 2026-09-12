@@ -110,6 +110,11 @@ public class Order {
     @OrderBy("createdAt DESC, id DESC")
     private List<OrderNote> notes = new ArrayList<>();
 
+    // In upload order. The rows go with the order, the files are deleted by OrderService.
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id")
+    private List<OrderPhoto> photos = new ArrayList<>();
+
     // Optimistic locking: every update increases it, an update with an older version fails
     @Version
     private Long version;

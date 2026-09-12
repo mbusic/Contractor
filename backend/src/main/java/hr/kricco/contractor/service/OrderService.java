@@ -9,13 +9,16 @@ import hr.kricco.contractor.dto.NoteDto;
 import hr.kricco.contractor.dto.OrderDto;
 import hr.kricco.contractor.dto.OrderRequest;
 import hr.kricco.contractor.dto.OrderSummaryDto;
+import hr.kricco.contractor.dto.PhotoDto;
 import hr.kricco.contractor.dto.ServicerDto;
+import hr.kricco.contractor.dto.UploadedFile;
 import hr.kricco.contractor.entity.Branch;
 import hr.kricco.contractor.entity.Client;
 import hr.kricco.contractor.entity.Costs;
 import hr.kricco.contractor.entity.Location;
 import hr.kricco.contractor.entity.Order;
 import hr.kricco.contractor.entity.OrderNote;
+import hr.kricco.contractor.entity.OrderPhoto;
 import hr.kricco.contractor.entity.OrderStatus;
 import hr.kricco.contractor.entity.Role;
 import hr.kricco.contractor.entity.User;
@@ -48,6 +51,8 @@ public class OrderService {
 
     private static final String ALREADY_TAKEN = "Order is already taken or not pending";
 
+    private static final int MAX_PHOTOS = 6;
+
     private final OrderRepository orderRepository;
     private final BranchRepository branchRepository;
     private final ClientRepository clientRepository;
@@ -55,6 +60,7 @@ public class OrderService {
     private final UserRepository userRepository;
     private final StatusTransitionService statusTransitionService;
     private final OrderNumberGenerator orderNumberGenerator;
+    private final FileStorageService fileStorageService;
 
     // ADMIN and OFFICE: all orders. SERVICER: assigned to them + all unassigned PENDING. Newest first.
     @Transactional(readOnly = true)
@@ -100,11 +106,17 @@ public class OrderService {
         return toDto(orderRepository.saveAndFlush(order), currentUser);
     }
 
-    // In any status. Its notes are deleted with it (cascade on Order.notes), photos once they exist.
+    // In any status. Its notes and photo rows go with it (cascade), then the photo files are deleted.
     @Transactional
     public void deleteOrder(Long id) {
         Order order = findOrder(id);
+        List<String> photoFiles = order.getPhotos().stream()
+                .map(OrderPhoto::getFilename)
+                .toList();
         orderRepository.delete(order);
+        // Rows first: if they can't be deleted, the files are still there
+        orderRepository.flush();
+        photoFiles.forEach(fileStorageService::delete);
     }
 
     @Transactional
@@ -184,6 +196,57 @@ public class OrderService {
         order.getNotes().addFirst(note);
         // The flush inserts the note (cascade), so the response has its ID and createdAt
         return toDto(orderRepository.saveAndFlush(order), currentUser);
+    }
+
+    // In any status. A SERVICER only on orders assigned to them.
+    @Transactional
+    public OrderDto addPhoto(Long id, UploadedFile file, User currentUser) {
+        Order order = findOrder(id);
+        if (!canChange(order, currentUser)) {
+            throw new ForbiddenException("You can't change this order");
+        }
+        storePhoto(order, file);
+        // The flush inserts the photo row (cascade), so the response has its ID
+        return toDto(orderRepository.saveAndFlush(order), currentUser);
+    }
+
+    @Transactional
+    public void deletePhoto(Long orderId, Long photoId, User currentUser) {
+        Order order = findOrder(orderId);
+        if (!canChange(order, currentUser)) {
+            throw new ForbiddenException("You can't change this order");
+        }
+        OrderPhoto photo = order.getPhotos().stream()
+                .filter(candidate -> candidate.getId().equals(photoId))
+                .findFirst()
+                .orElseThrow(() -> new NotFoundException("Photo not found"));
+        order.getPhotos().remove(photo);
+        // Row first: if it can't be deleted, the file is still there
+        orderRepository.flush();
+        fileStorageService.delete(photo.getFilename());
+    }
+
+    // Shared with the portal (later slice). Two uploads at the same moment can get past the limit (accepted).
+    void storePhoto(Order order, UploadedFile file) {
+        if (order.getPhotos().size() >= MAX_PHOTOS) {
+            throw new BadRequestException("An order can have at most " + MAX_PHOTOS + " photos");
+        }
+        ImageType type = checkImage(file);
+        OrderPhoto photo = new OrderPhoto();
+        photo.setOrder(order);
+        photo.setFilename(fileStorageService.store(file.content(), type.extension()));
+        order.getPhotos().add(photo);
+    }
+
+    // The name and Content-Type give a quick, clear answer for a wrong file.
+    // The first bytes decide, since the client can fake both. The stored extension comes from them.
+    private ImageType checkImage(UploadedFile file) {
+        boolean allowedName = ImageType.fromFileName(file.originalName()).isPresent();
+        if (!allowedName || !ImageType.isAllowedMediaType(file.contentType())) {
+            throw new BadRequestException("Only JPEG, PNG, GIF or WebP images are allowed");
+        }
+        return ImageType.detect(file.content())
+                .orElseThrow(() -> new BadRequestException("The file is not a valid JPEG, PNG, GIF or WebP image"));
     }
 
     // For UserService, when a servicer is deactivated or gets another role. Their IN_PROGRESS orders go back
@@ -371,6 +434,7 @@ public class OrderService {
                 toCostsDto(order.getActualCosts()),
                 toCostDifference(order.getEstimatedCosts(), order.getActualCosts()),
                 order.getNotes().stream().map(this::toNoteDto).toList(),
+                order.getPhotos().stream().map(this::toPhotoDto).toList(),
                 order.getCreatedAt(),
                 order.getUpdatedAt(),
                 order.getVersion());
@@ -422,6 +486,10 @@ public class OrderService {
             return null;
         }
         return new ServicerDto(servicer.getId(), servicer.getDisplayName());
+    }
+
+    private PhotoDto toPhotoDto(OrderPhoto photo) {
+        return new PhotoDto(photo.getId(), "/api/files/" + photo.getFilename());
     }
 
     private NoteDto toNoteDto(OrderNote note) {

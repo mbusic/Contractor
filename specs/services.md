@@ -131,15 +131,15 @@ For employees. Client users go through PortalService.
 | `OrderDto getOrder(Long id, User currentUser)` | Row check. Fills `allowedNextStatuses` from StatusTransitionService (empty if the user may not change the order, without IN_PROGRESS if no servicer is assigned), and calculates total hours and `costDifference` (every OrderDto response has them) |
 | `OrderDto createOrder(OrderRequest req, User currentUser)` | New DRAFT without a number. `currentUser` is only used for `allowedNextStatuses` in the response |
 | `OrderDto updateOrder(Long id, OrderRequest req, User currentUser)` | Version check, full replace of order data and estimated costs, in any status. For a submitted order, client and location stay required (400) |
-| `void deleteOrder(Long id)` | Deletes the order (with its notes and photos), then the photo files |
+| `void deleteOrder(Long id)` | Deletes the order (with its notes and photo rows), flushes, then deletes the photo files |
 | `OrderDto changeStatus(Long id, OrderStatus newStatus, Long version, User currentUser)` | Row check, version check, then `applyStatus` |
 | `OrderDto acceptOrder(Long id, User currentUser)` | Servicer takes an unassigned PENDING order |
 | `OrderDto assignServicer(Long id, Long servicerId, Long version, User currentUser)` | Version check, then the office assigns or reassigns |
 | `void releaseOrdersOf(User servicer)` | For UserService. The servicer's IN_PROGRESS orders go through `applyStatus(PENDING)`, which unassigns them. DRAFT, RESOLVED and CANCELLED orders keep the servicer as history |
 | `OrderDto updateActualCosts(Long id, CostsRequest costs, Long version, User currentUser)` | Row check, version check, full replace of the actual cost fields. Any status |
 | `OrderDto addNote(Long id, String text, User currentUser)` | Row check, any status. Author = currentUser. Added through `Order.notes` (cascade) and flushed, so the response has the note's ID and createdAt |
-| `OrderDto addPhoto(Long id, MultipartFile file, User currentUser)` | Row check, then `storePhoto` |
-| `void deletePhoto(Long orderId, Long photoId, User currentUser)` | Row check [S6], deletes the row and the file |
+| `OrderDto addPhoto(Long id, UploadedFile file, User currentUser)` | Row check, any status, then `storePhoto`. The controller copies the MultipartFile into `UploadedFile(originalName, contentType, content)`, so services stay free of Spring Web types |
+| `void deletePhoto(Long orderId, Long photoId, User currentUser)` | Row check [S6]. 404 "Photo not found" if the photo isn't on this order. Deletes the row, flushes, then deletes the file |
 | `String getDocument(Long id, DocumentType type, User currentUser)` | Row check [S4], then `DocumentService.render` |
 
 Shared with PortalService (not exposed through REST directly):
@@ -147,7 +147,7 @@ Shared with PortalService (not exposed through REST directly):
 | Method | Does |
 |--------|------|
 | `void applyStatus(Order order, OrderStatus newStatus)` | 409 if StatusTransitionService doesn't allow it. 409 "Assign a servicer first" for IN_PROGRESS without a servicer. For a submitted status (PENDING, IN_PROGRESS, RESOLVED): 400 without client or location, and takes a number from OrderNumberGenerator if the order has none yet. A change to PENDING clears the servicer: a PENDING order never has one |
-| `void storePhoto(Order order, MultipartFile file)` | JPEG, PNG, GIF or WebP only (400 otherwise). Max 6 per order (400). Stores the file through FileStorageService |
+| `void storePhoto(Order order, UploadedFile file)` | Max 6 per order (400). Quick check on the file name extension and Content-Type, then `ImageType.detect` on the first bytes decides (both 400, see rest-api.md "Photos"). Stores the bytes through FileStorageService with the detected type's extension. Two uploads at the same moment can pass the limit together (accepted, no lock) |
 
 Rules:
 - **Row check** (`checkAccess`): ADMIN and OFFICE may touch every order. A SERVICER may read an order assigned to them or an unassigned PENDING one, and may change only orders assigned to them. Otherwise 403.
@@ -168,7 +168,7 @@ Rules:
 | `PortalOrderDto createOrder(PortalOrderRequest req, User currentUser)` | New DRAFT, client = the user's client, no branch, no costs |
 | `PortalOrderDto updateOrder(Long id, PortalOrderRequest req, User currentUser)` | Only while DRAFT (409) |
 | `PortalOrderDto submitOrder(Long id, User currentUser)` | Only while DRAFT (409), then `OrderService.applyStatus(PENDING)` |
-| `PortalOrderDto addPhoto(Long id, MultipartFile file, User currentUser)` | Only while DRAFT, then `OrderService.storePhoto` |
+| `PortalOrderDto addPhoto(Long id, UploadedFile file, User currentUser)` | Only while DRAFT, then `OrderService.storePhoto` |
 | `void deletePhoto(Long id, Long photoId, User currentUser)` | Only while DRAFT |
 | `String getDocument(Long id, DocumentType type, User currentUser)` | 403 if clients may not see this type (domain-model Q5), then `DocumentService.render` |
 | `List<LocationDto> getLocations(User currentUser)` | Through ClientService |
@@ -217,11 +217,14 @@ The rows come from `schema.sql` (see domain-model StatusTransition).
 
 | Method | Does |
 |--------|------|
-| `String store(MultipartFile file)` | Saves an upload (photo) as `<uuid>.<ext>` in `./uploads`, returns the filename |
-| `Path load(String filename)` | Resolves the file in `./uploads`. Rejects names that leave the folder (e.g. `../`) |
+| `String store(byte[] content, String extension)` | Saves the bytes as `<uuid>.<extension>` in the upload folder, returns the filename |
+| `StoredPhoto loadPhoto(String filename)` | The file and its ImageType (from the extension). 404 "File not found" unless the file is directly in the upload folder (no `../`), has an image extension, and exists |
 | `void delete(String filename)` | Deletes the file if it exists |
 
-The upload folder comes from `app.upload-dir`, as in the template.
+- The upload folder comes from `app.upload-dir` (`./uploads`, tests: `build/test-uploads`), as in the template. Max 10 MB per file (`spring.servlet.multipart.max-file-size`), a bigger upload gets 413.
+- File errors (disk full, no rights) become `UncheckedIOException`, so a 500.
+- Files and rows are kept in sync the simple way, as in the template, but with rows first: an upload writes the file before the row is committed, so a failed transaction can leave an orphan file (harmless). A delete removes the row and flushes before it deletes the file, so a failed delete never leaves a row without its file. A crash between the commit and the file delete can leave an orphan file.
+- `ImageType` (JPEG, PNG, GIF, WEBP) holds the extension, the media type, and the magic-byte detection.
 
 ## Security components
 
@@ -229,7 +232,7 @@ Not services, but the auth steps (roadmap steps 3-5) need them. The same classes
 
 | Class | Does |
 |-------|------|
-| SecurityConfig | Stateless (no session), CSRF off. Public: `/api/auth/login`, `/api/health`, and `/api/files/**` once the Files slice adds it. Error forwards (`DispatcherType.ERROR`) are allowed too: Tomcat's forward to `/error` carries no authentication, so without this a real error would turn into a 401. Everything else needs a token, and a missing or invalid one gets 401 with an empty body. `@EnableMethodSecurity` turns on `@PreAuthorize`, which checks the role per endpoint [S8]. CORS is decided in step 7 (Angular dev proxy or CORS for `app.cors.origin`) |
+| SecurityConfig | Stateless (no session), CSRF off. Public: `/api/auth/login`, `/api/health`, and GET `/api/files/**` (the documents load photos with `<img>`, which can't send a token; the file names are random UUIDs). Error forwards (`DispatcherType.ERROR`) are allowed too: Tomcat's forward to `/error` carries no authentication, so without this a real error would turn into a 401. Everything else needs a token, and a missing or invalid one gets 401 with an empty body. `@EnableMethodSecurity` turns on `@PreAuthorize`, which checks the role per endpoint [S8]. CORS is decided in step 7 (Angular dev proxy or CORS for `app.cors.origin`) |
 | JwtUtil | Creates and checks HS256 tokens (subject = username, claim `role`). Secret from `APP_JWT_SECRET` (no default, at least 32 bytes, else the app doesn't start), lifetime 24h |
 | JwtAuthFilter | Reads `Authorization: Bearer ...`, loads the user, puts it into the security context. If the user was deleted or deactivated after the token was issued, the request stays unauthenticated (the template throws, which gives a 500). Created in SecurityConfig, not a `@Component` |
 | UserDetailsServiceImpl | Loads an active User by username for the filter. A deactivated user counts as not found |

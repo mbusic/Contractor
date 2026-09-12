@@ -19,7 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PreAuthorizeCoverageTest {
 
     // Public endpoints, opened in SecurityConfig
-    private static final Set<Class<?>> PUBLIC_CONTROLLERS = Set.of(AuthController.class, HealthController.class);
+    private static final Set<Class<?>> PUBLIC_CONTROLLERS =
+            Set.of(AuthController.class, HealthController.class, FileController.class);
 
     @Autowired
     @Qualifier("requestMappingHandlerMapping")

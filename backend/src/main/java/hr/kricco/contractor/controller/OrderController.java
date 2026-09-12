@@ -7,11 +7,13 @@ import hr.kricco.contractor.dto.OrderDto;
 import hr.kricco.contractor.dto.OrderRequest;
 import hr.kricco.contractor.dto.OrderSummaryDto;
 import hr.kricco.contractor.dto.StatusChangeRequest;
+import hr.kricco.contractor.dto.UploadedFile;
 import hr.kricco.contractor.security.UserPrincipal;
 import hr.kricco.contractor.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -22,9 +24,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 
 // Orders for employees. Which orders a SERVICER may see or change is checked in OrderService.
@@ -105,5 +110,23 @@ public class OrderController {
     public OrderDto addNote(@PathVariable Long id, @Valid @RequestBody NoteRequest request,
                             @AuthenticationPrincipal UserPrincipal principal) {
         return orderService.addNote(id, request.text(), principal.getUser());
+    }
+
+    // Multipart with one part "file". Copied into UploadedFile, so OrderService doesn't depend on Spring Web.
+    @PostMapping(path = "/{id}/photos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE', 'SERVICER')")
+    public OrderDto addPhoto(@PathVariable Long id, @RequestParam("file") MultipartFile file,
+                             @AuthenticationPrincipal UserPrincipal principal) throws IOException {
+        UploadedFile upload = new UploadedFile(file.getOriginalFilename(), file.getContentType(), file.getBytes());
+        return orderService.addPhoto(id, upload, principal.getUser());
+    }
+
+    @DeleteMapping("/{id}/photos/{photoId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE', 'SERVICER')")
+    public void deletePhoto(@PathVariable Long id, @PathVariable Long photoId,
+                            @AuthenticationPrincipal UserPrincipal principal) {
+        orderService.deletePhoto(id, photoId, principal.getUser());
     }
 }
