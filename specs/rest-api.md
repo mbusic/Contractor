@@ -140,6 +140,7 @@ Every endpoint checks the role through `@PreAuthorize` on its controller method 
 | GET    | `/api/files/{filename}`  | public | File bytes | Photos. `Content-Type` from the stored type, `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`. 404 for an unknown name, a name outside the upload folder, or a non-image file |
 
 - File names are random UUIDs (e.g. `3f2a...c9.jpg`), so a URL can't be guessed. A user gets the URL only through an authenticated endpoint (order detail, portal order detail), and after that it works without a token. This is needed because an `<img>` tag can't send the JWT header - on the order detail screen and in the document pages.
+- TODO: replace public access to `/api/files` with short-lived signed URLs.
 
 ### Client portal
 

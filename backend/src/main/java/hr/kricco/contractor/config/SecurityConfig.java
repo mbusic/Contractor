@@ -44,7 +44,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/login", "/api/health").permitAll()
                         // Photos: the document pages load them with <img>, which can't send a token.
                         // The names are random UUIDs, so nobody can guess one.
+                        // TODO: replace public access to /api/files with short-lived signed URLs
                         .requestMatchers(HttpMethod.GET, "/api/files/**").permitAll()
+                        // The frontend is hosted from Spring (static/), so its built files go through this filter chain too:
+                        // index.html and its hashed files at the root. The browser loads them before anyone is logged in.
+                        // "/" is forwarded to /index.html, and the forward is checked again, so both are listed.
+                        .requestMatchers(HttpMethod.GET, "/", "/index.html", "/favicon.ico", "/*.js", "/*.css").permitAll()
                         // Tomcat's internal forward to /error after an uncaught exception or sendError().
                         // The forwarded request has no authentication, so without this the real error would become a 401.
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
