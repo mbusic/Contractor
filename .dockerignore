@@ -1,0 +1,18 @@
+.git
+.idea
+.claude
+CLAUDE.md
+**/.env
+**/.env.*
+
+# Frontend: dependencies are installed and the app is built inside the image
+frontend/node_modules
+frontend/dist
+frontend/.angular
+
+# Backend: build output, local Gradle state and uploaded photos
+backend/build
+backend/.gradle
+backend/uploads
+# Filled from the Angular build inside the image, so old local files must not get in
+backend/src/main/resources/static

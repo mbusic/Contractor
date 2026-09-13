@@ -36,13 +36,14 @@ The backend reads these from the environment (they're not stored in git):
 
 | Variable | Meaning |
 |----------|---------|
-| `DB_USER` | Database user |
-| `DB_PASSWORD` | Its password |
+| `PGUSER` | Database user |
+| `PGPASSWORD` | Its password |
 | `APP_JWT_SECRET` | Key that signs the login tokens, at least 32 bytes, e.g. `openssl rand -base64 48`. The backend doesn't start without it |
+| `PGHOST`, `PGPORT`, `PGDATABASE` | Optional, default to `localhost`, `5432`, `contractor` |
 
 ```bash
-export DB_USER=contractor
-export DB_PASSWORD=...
+export PGUSER=contractor
+export PGPASSWORD=...
 export APP_JWT_SECRET=$(openssl rand -base64 48)
 ```
 
@@ -56,8 +57,8 @@ everything entered by hand).
 
 ```bash
 cd backend
-psql -h localhost -U "$DB_USER" -d contractor -v ON_ERROR_STOP=1 -f src/main/resources/schema.sql
-psql -h localhost -U "$DB_USER" -d contractor --single-transaction -v ON_ERROR_STOP=1 -f src/main/resources/seed.sql
+psql -h localhost -U "$PGUSER" -d contractor -v ON_ERROR_STOP=1 -f src/main/resources/schema.sql
+psql -h localhost -U "$PGUSER" -d contractor --single-transaction -v ON_ERROR_STOP=1 -f src/main/resources/seed.sql
 ```
 
 The test database needs nothing: the tests build it from `schema.sql` themselves.
@@ -100,7 +101,7 @@ cd backend
 ./gradlew test
 ```
 
-Runs against `contractor_test` and needs the same environment variables (`DB_USER`, `DB_PASSWORD`; the JWT key
+Runs against `contractor_test` and needs the same environment variables (`PGUSER`, `PGPASSWORD`; the JWT key
 for tests is fixed in the test configuration). The frontend has no automatic tests for now
 (`specs/tech-stack.md`); `npx ng build` in `frontend/` checks that it compiles.
 
