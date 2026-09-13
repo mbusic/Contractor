@@ -12,7 +12,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// One allowed status change. The rows come from schema.sql.
+// One allowed status change. The rows come from the migrations (V1__initial_schema.sql).
 @Entity
 @Table(name = "status_transitions")
 @Getter

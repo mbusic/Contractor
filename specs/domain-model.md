@@ -214,7 +214,7 @@ A table only, no entity: OrderNumberGenerator reads and increases it with one SQ
 - Has its own `id`, plus a unique constraint on (fromStatus, toStatus). fromStatus and toStatus must be different.
 - An order's status can only change from A to B if there's a row for A -> B. The service checks this and rejects any other change.
 - The user picks the new status from the allowed next statuses. The order detail response includes this list, so the UI shows only valid choices. The list is empty when the user may not change the order, and leaves out IN_PROGRESS when no servicer is assigned.
-- The rows are reference data the app needs to work, so they go into `schema.sql` as INSERTs, right after the CREATE TABLE. They don't go into the seed script.
+- The rows are reference data the app needs to work, so they are INSERTs in the migration that creates the table (`V1__initial_schema.sql`), right after the CREATE TABLE. They don't go into the seed script. Changing them later means a new migration.
 - For now, every change between two different statuses is allowed (5 statuses x 4 = 20 rows), so users can pick freely. RESOLVED and CANCELLED are not final yet.
 - Later we switch to these target rules by replacing the rows:
 

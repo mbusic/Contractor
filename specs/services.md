@@ -185,7 +185,7 @@ Client portal (`/api/portal/orders`, CLIENT only) [S2]. Every method takes `User
 | `boolean isAllowed(OrderStatus from, OrderStatus to)` | True if a row exists |
 | `List<OrderStatus> allowedNext(OrderStatus from)` | For `allowedNextStatuses` in the order detail |
 
-The rows come from `schema.sql` (see domain-model StatusTransition).
+The rows come from the migrations, `V1__initial_schema.sql` (see domain-model StatusTransition).
 
 ## OrderNumberGenerator
 

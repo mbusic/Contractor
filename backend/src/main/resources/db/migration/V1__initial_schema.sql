@@ -1,7 +1,6 @@
--- Whole database schema of the Contractor app.
--- Update this file in the same change that needs a new table or column,
--- then apply the change to the dev database by hand (see specs/tech-stack.md).
--- Tests rebuild their database from this file on every run.
+-- Initial schema of the Contractor app (schema.sql before the switch to Flyway).
+-- Flyway applies it on startup. Never edit it once it has been applied: every schema change is a new
+-- migration next to it (V2__..., V3__...), see specs/tech-stack.md.
 -- "version" columns are for optimistic locking (JPA @Version): every update increases them.
 
 CREATE TABLE branches (

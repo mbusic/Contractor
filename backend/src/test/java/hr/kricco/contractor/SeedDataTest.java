@@ -24,7 +24,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
-// Checks that seed.sql still runs against the current schema.sql.
+// Checks that seed.sql still runs against the schema from the migrations.
 // The script runs inside the test transaction, so everything is rolled back afterwards.
 @SpringBootTest
 @Transactional

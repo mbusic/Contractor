@@ -13,7 +13,7 @@ and clients follow their orders in a portal. Proof of concept.
 - Java 21 (Gradle comes with the wrapper, `./gradlew`)
 - PostgreSQL (tested with 17)
 - Node.js with npm (tested with Node 24; Angular 19 officially supports 18.19+, 20 and 22)
-- `psql` for applying the schema and the demo data
+- `psql` for loading the demo data
 
 ## Setup
 
@@ -22,7 +22,7 @@ and clients follow their orders in a portal. Proof of concept.
 Two databases on the same server, both owned by one user:
 
 - `contractor` - development
-- `contractor_test` - automatic tests. The tests drop and rebuild its `public` schema on every run,
+- `contractor_test` - automatic tests. The tests empty its `public` schema and apply the migrations on every run,
   so the user must own that schema.
 
 ```bash
@@ -51,17 +51,17 @@ A new `APP_JWT_SECRET` logs everyone out, since the old tokens stop working.
 
 ### 3. Schema and demo data (dev database)
 
-There are no migrations yet: `schema.sql` is the whole schema and is applied by hand. `seed.sql` fills in demo data.
-It empties all tables first, so it can be run again at any time to get back to a known state (it also deletes
+The schema comes from the Flyway migrations in `backend/src/main/resources/db/migration`. The backend applies
+the missing ones on startup, so start it once (see Running) before loading the demo data. `seed.sql` fills in demo
+data. It empties all tables first, so it can be run again at any time to get back to a known state (it also deletes
 everything entered by hand).
 
 ```bash
 cd backend
-psql -h localhost -U "$PGUSER" -d contractor -v ON_ERROR_STOP=1 -f src/main/resources/schema.sql
 psql -h localhost -U "$PGUSER" -d contractor --single-transaction -v ON_ERROR_STOP=1 -f src/main/resources/seed.sql
 ```
 
-The test database needs nothing: the tests build it from `schema.sql` themselves.
+The test database needs nothing: the tests empty it and apply the migrations themselves.
 
 ## Running
 
@@ -128,8 +128,5 @@ Afterwards, run `seed.sql` again to get back to the demo data.
 
 Not part of the POC (see `specs/roadmap.md`):
 
-- Flyway instead of the hand-applied `schema.sql` (roadmap step 11)
-- A production setup for the frontend (a built app served next to the API) and `app.base-url` for the photo links
-  in the documents
 - The time sheet, the legal invoice data (VAT, OIB, invoice number), and editable document templates
   (`specs/domain-model.md`, "Deferred" and DocumentType)

@@ -1,10 +1,11 @@
 -- Demo data for the dev database. The app never runs this file.
--- Apply it by hand after schema.sql (from the backend folder):
+-- Apply it by hand once the backend has created the schema with Flyway (from the backend folder):
 --   psql -h localhost -U contractor -d contractor --single-transaction -v ON_ERROR_STOP=1 -f src/main/resources/seed.sql
 -- It empties all tables first, so every run gives the same data and the same IDs (Zagreb = 1).
 -- No photos: their rows would point to files that don't exist in app.upload-dir.
--- When schema.sql gets a new table, add the table to the TRUNCATE list and add its rows below.
--- status_transitions is not in the list: its rows are reference data from schema.sql.
+-- When a migration adds a new table, add the table to the TRUNCATE list and add its rows below.
+-- status_transitions is not in the list: its rows are reference data from the migrations.
+-- flyway_schema_history is not in the list either: it's Flyway's own table.
 -- No BEGIN/COMMIT here: psql --single-transaction does that, and SeedDataTest runs this file inside its own transaction.
 
 TRUNCATE TABLE branches, clients, locations, users, order_sequences, orders, order_notes, order_photos RESTART IDENTITY CASCADE;
